@@ -16,7 +16,6 @@
 1. 创建 `docker-compose.yml` 文件：
 
 ```yaml
-version: '3'
 
 services:
   tstohls:
