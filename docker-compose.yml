@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  tstohls:
+    image: tstohls
+    container_name: tstohls
+    ports:
+      - "15140:15140"
+    volumes:
+      - ./data/m3u:/app/data/m3u
+    tmpfs:
+      - /app/data/hls:size=512m
+    restart: always

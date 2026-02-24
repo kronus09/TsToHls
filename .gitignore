@@ -1,0 +1,11 @@
+# 忽略二进制文件
+*.exe
+tstohls
+
+# 忽略临时数据目录
+data/hls/
+data/m3u/
+
+# 忽略开发环境配置
+.vscode/
+.idea/

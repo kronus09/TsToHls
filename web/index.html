@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TsToHls - 视频流转换工具</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <!-- ArtPlayer.js -->
+    <script src="https://cdn.jsdelivr.net/npm/artplayer@latest/dist/artplayer.js"></script>
+    <!-- Hls.js -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js"></script>
+    <style>
+        .tab-active {
+            border-bottom: 2px solid #4f46e5;
+            color: #4f46e5;
+        }
+        .drop-zone {
+            border: 2px dashed #e5e7eb;
+            transition: all 0.3s ease;
+        }
+        .drop-zone:hover, .drop-zone.dragover {
+            border-color: #4f46e5;
+            background-color: #eef2ff;
+        }
+        .channel-card {
+            transition: all 0.2s ease;
+        }
+        .channel-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.15);
+        }
+        .group-btn.active {
+            background-color: #4f46e5;
+            color: white;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Header -->
+    <header class="bg-white shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex items-center">
+            <i data-lucide="tv" class="w-8 h-8 text-indigo-600 mr-3"></i>
+            <h1 class="text-2xl font-bold text-gray-800">TsToHls</h1>
+            <span class="text-sm text-gray-500 ml-2">v1.0.0</span>
+        </div>
+    </header>
+
+    <!-- Tab 导航 -->
+    <div class="max-w-7xl mx-auto px-4 mt-6">
+        <div class="flex justify-center border-b border-gray-200">
+            <button id="tabConsole" class="tab-active px-8 py-3 font-medium text-lg">系统控制</button>
+            <button id="tabPreview" class="px-8 py-3 font-medium text-lg text-gray-500">直播预览</button>
+        </div>
+    </div>
+
+    <!-- Tab 1: 系统控制 -->
+    <div id="consolePage" class="max-w-7xl mx-auto px-4 py-6">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- 上传卡片 -->
+            <div class="bg-white rounded-xl shadow-sm p-6">
+                <h2 class="text-lg font-semibold mb-4">上传 M3U 文件</h2>
+                <div id="dropZone" class="drop-zone rounded-lg p-8 text-center cursor-pointer">
+                    <i data-lucide="upload" class="w-12 h-12 text-gray-400 mx-auto mb-3"></i>
+                    <p class="text-gray-600 mb-2">拖拽文件到此处或点击上传</p>
+                    <p class="text-sm text-gray-400">支持 .m3u, .m3u8 格式</p>
+                </div>
+                <input type="file" id="fileInput" accept=".m3u,.m3u8" class="hidden">
+                <form id="uploadForm" class="mt-4">
+                    <button type="submit" class="w-full bg-indigo-600 text-white py-3 px-4 rounded-lg hover:bg-indigo-700 transition font-medium">
+                        开始转换
+                    </button>
+                </form>
+            </div>
+
+            <!-- 状态卡片 -->
+            <div class="bg-white rounded-xl shadow-sm p-6">
+                <h2 class="text-lg font-semibold mb-4">系统状态</h2>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-indigo-50 rounded-lg p-4 text-center">
+                        <div id="processCount" class="text-3xl font-bold text-indigo-600">0</div>
+                        <div class="text-sm text-gray-600 mt-1">活跃进程</div>
+                    </div>
+                    <div class="bg-green-50 rounded-lg p-4 text-center">
+                        <div id="channelCount" class="text-3xl font-bold text-green-600">0</div>
+                        <div class="text-sm text-gray-600 mt-1">已加载频道</div>
+                    </div>
+                </div>
+                <div id="resultSection" class="mt-6 hidden">
+                    <h3 class="font-medium mb-2">转换结果</h3>
+                    <div class="flex items-center gap-2">
+                        <input type="text" id="m3uUrl" readonly class="flex-1 px-3 py-2 border rounded-lg text-sm bg-gray-50" placeholder="M3U 链接">
+                        <button id="copyBtn" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium">
+                            复制
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab 2: 直播预览 -->
+    <div id="previewPage" class="hidden max-w-7xl mx-auto px-4 py-6">
+        <!-- 播放器 -->
+        <div class="bg-white rounded-xl shadow-sm p-6 mb-6">
+            <div id="playerContainer" class="aspect-video bg-black rounded-lg overflow-hidden">
+                <p class="text-gray-400 text-center py-16">请选择频道播放</p>
+            </div>
+        </div>
+
+        <!-- 分组导航 -->
+        <div class="bg-white rounded-xl shadow-sm p-4 mb-6">
+            <div id="groupNav" class="flex gap-2 overflow-x-auto pb-2">
+                <!-- 动态生成分组按钮 -->
+            </div>
+        </div>
+
+        <!-- 频道网格 -->
+        <div id="channelGrid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            <!-- 动态生成频道卡片 -->
+            <p class="col-span-full text-center text-gray-500 py-8">请先上传 M3U 文件</p>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="text-center py-6 text-gray-400 text-sm">
+        © 2026 TsToHls Project. All rights reserved.
+    </footer>
+
+    <script>
+        // 全局变量
+        let channels = [];
+        let groups = {};
+        let currentGroup = '';
+        let artPlayer = null;
+
+        // Tab 切换
+        document.getElementById('tabConsole').addEventListener('click', () => {
+            document.getElementById('tabConsole').classList.add('tab-active', 'text-indigo-600');
+            document.getElementById('tabConsole').classList.remove('text-gray-500');
+            document.getElementById('tabPreview').classList.remove('tab-active', 'text-indigo-600');
+            document.getElementById('tabPreview').classList.add('text-gray-500');
+            document.getElementById('consolePage').classList.remove('hidden');
+            document.getElementById('previewPage').classList.add('hidden');
+        });
+
+        document.getElementById('tabPreview').addEventListener('click', () => {
+            document.getElementById('tabPreview').classList.add('tab-active', 'text-indigo-600');
+            document.getElementById('tabPreview').classList.remove('text-gray-500');
+            document.getElementById('tabConsole').classList.remove('tab-active', 'text-indigo-600');
+            document.getElementById('tabConsole').classList.add('text-gray-500');
+            document.getElementById('consolePage').classList.add('hidden');
+            document.getElementById('previewPage').classList.remove('hidden');
+        });
+
+        // 文件上传
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            if (e.dataTransfer.files.length) {
+                fileInput.files = e.dataTransfer.files;
+            }
+        });
+
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length) {
+                dropZone.querySelector('p').textContent = fileInput.files[0].name;
+            }
+        });
+
+        // 表单提交
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!fileInput.files.length) {
+                alert('请先选择文件');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('m3uFile', fileInput.files[0]);
+
+            try {
+                const response = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    channels = data.channels;
+                    // 生成分组
+                    groups = {};
+                    channels.forEach(ch => {
+                        if (!groups[ch.Group]) groups[ch.Group] = [];
+                        groups[ch.Group].push(ch);
+                    });
+
+                    // 更新状态
+                    document.getElementById('channelCount').textContent = channels.length;
+
+                    // 显示结果
+                    document.getElementById('resultSection').classList.remove('hidden');
+
+                    // 渲染频道列表
+                    renderChannels();
+                } else {
+                    alert('上传失败: ' + data.error);
+                }
+            } catch (err) {
+                alert('上传失败: ' + err.message);
+            }
+        });
+
+        // 复制功能
+        document.getElementById('copyBtn').addEventListener('click', () => {
+            const input = document.getElementById('m3uUrl');
+            input.select();
+            document.execCommand('copy');
+            document.getElementById('copyBtn').textContent = '已复制';
+            setTimeout(() => document.getElementById('copyBtn').textContent = '复制', 2000);
+        });
+
+        // 渲染分组导航
+        function renderGroups() {
+            const groupNav = document.getElementById('groupNav');
+            groupNav.innerHTML = '';
+            Object.keys(groups).forEach((group, index) => {
+                const btn = document.createElement('button');
+                btn.className = 'group-btn px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap ' + 
+                    (index === 0 ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200');
+                btn.textContent = group + ' (' + groups[group].length + ')';
+                btn.addEventListener('click', () => selectGroup(group, btn));
+                groupNav.appendChild(btn);
+            });
+            if (Object.keys(groups).length > 0) {
+                selectGroup(Object.keys(groups)[0], groupNav.children[0]);
+            }
+        }
+
+        // 选择分组
+        function selectGroup(group, btn) {
+            currentGroup = group;
+            document.querySelectorAll('.group-btn').forEach(b => {
+                b.classList.remove('bg-indigo-600', 'text-white');
+                b.classList.add('bg-gray-100', 'text-gray-700');
+            });
+            btn.classList.remove('bg-gray-100', 'text-gray-700');
+            btn.classList.add('bg-indigo-600', 'text-white');
+            renderChannelGrid();
+        }
+
+        // 渲染频道网格
+        function renderChannelGrid() {
+            const grid = document.getElementById('channelGrid');
+            grid.innerHTML = '';
+            const channelList = groups[currentGroup] || [];
+            channelList.forEach(ch => {
+                const card = document.createElement('div');
+                card.className = 'channel-card bg-white rounded-lg shadow-sm p-4 cursor-pointer border border-gray-100';
+                card.innerHTML = `
+                    <div class="font-medium text-gray-800 truncate">${ch.Name}</div>
+                    <div class="text-xs text-gray-400 mt-1 truncate">${ch.ID}</div>
+                `;
+                card.addEventListener('click', () => playChannel(ch));
+                grid.appendChild(card);
+            });
+        }
+
+        // 渲染频道（首次加载）
+        function renderChannels() {
+            renderGroups();
+            renderChannelGrid();
+        }
+
+        // 播放频道
+        function playChannel(channel) {
+            const url = '/stream/' + channel.ID + '/index.m3u8';
+            const container = document.getElementById('playerContainer');
+
+            if (artPlayer) {
+                artPlayer.destroy();
+            }
+
+            container.innerHTML = '';
+
+            artPlayer = new Artplayer({
+                container: container,
+                url: url,
+                autoplay: true,
+                volume: 0.5,
+                pip: true,
+                fullscreen: true,
+                setting: true,
+                mutex: true,
+                theme: '#4f46e5',
+                customType: {
+                    m3u8: function(video, url, art) {
+                        if (Hls.isSupported()) {
+                            const hls = new Hls();
+                            hls.loadSource(url);
+                            hls.attachMedia(video);
+                        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                            video.src = url;
+                        }
+                    }
+                }
+            });
+
+            // 切换到直播预览 Tab
+            document.getElementById('tabPreview').click();
+        }
+
+        // 初始化 Lucide 图标
+        lucide.createIcons();
+
+        // 定期更新状态
+        setInterval(async () => {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                document.getElementById('processCount').textContent = data.processCount;
+            } catch (e) {}
+        }, 3000);
+    </script>
+</body>
+</html>
