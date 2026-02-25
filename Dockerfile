@@ -7,9 +7,11 @@ FROM golang:1.23-alpine AS builder
 ENV CGO_ENABLED=0 GOOS=linux
 WORKDIR /app
 
-# 利用 Docker 缓存层加速依赖下载
-COPY go.mod go.sum ./
-RUN go mod download
+# 优化点：使用通配符拷贝 go.mod 和 go.sum（如果存在）
+# 这样即使没有第三方依赖导致缺少 go.sum，构建也不会失败
+COPY go.mod go.sum* ./
+# 只有当 go.mod 包含依赖时才运行下载
+RUN if [ -f go.sum ]; then go mod download; fi
 
 COPY . .
 RUN go build -o tstohls .
@@ -32,7 +34,7 @@ COPY --from=builder /app/tstohls .
 # 拷贝静态资源
 COPY --from=builder /app/web ./web
 
-# --- 核心修改：创建符合最新逻辑的目录 ---
+# --- 创建符合最新逻辑的目录 ---
 # 1. m3u: 存放 mapping.json 和订阅文件
 # 2. hls_temp: 存放 FFmpeg 实时生成的切片文件
 RUN mkdir -p ./m3u ./hls_temp
