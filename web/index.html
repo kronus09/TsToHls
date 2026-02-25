@@ -33,7 +33,7 @@
         <div class="max-w-7xl mx-auto px-6 py-6 flex justify-between items-center">
             <div class="flex items-center gap-3">
                 <i data-lucide="play" class="w-8 h-8 text-indigo-600"></i>
-                <h1 class="text-3xl font-extrabold brand-text">TsToHls <span class="text-slate-300 font-mono-jb text-sm ml-2">v1.1.1</span></h1>
+                <h1 class="text-3xl font-extrabold brand-text">TsToHls <span class="text-slate-300 font-mono-jb text-sm ml-2">v1.1.2</span></h1>
             </div>
             <nav class="flex gap-8">
                 <button id="tabConsole" class="font-bold pb-2 border-b-4 border-indigo-600 text-indigo-600">系统控制</button>
@@ -98,10 +98,19 @@
     </main>
 
     <template id="footerTemplate">
-        <div class="flex justify-center items-center gap-6 text-xs font-medium border-t border-slate-100 pt-10 pb-10">
-            <span class="text-slate-400">Developed by <span class="text-slate-600">Gemini</span></span>
-            <span class="text-slate-200">|</span>
-            <span class="text-slate-400 font-mono-jb">v1.1.1</span>
+        <div class="flex flex-col justify-center items-center gap-2 text-xs font-medium border-t border-slate-100 pt-10 pb-10">
+            <div class="flex items-center gap-2">
+                <span class="text-slate-400 flex items-center">
+                    Developed by 
+                    <a href="https://github.com/kronus09/TsToHls" target="_blank" 
+                       class="flex items-center gap-1.5 ml-1.5 text-slate-600 hover:text-indigo-600 transition-all font-bold group">
+                        <span>kronus09</span>
+                        <i data-lucide="github" class="w-4 h-4 fill-current border-none"></i>
+                    </a>
+                </span>
+                <span class="text-slate-200">|</span>
+                <span class="text-slate-400 font-mono-jb">v1.1.2</span>
+            </div>
         </div>
     </template>
 
@@ -184,6 +193,14 @@
             urlInput.value = `${window.location.origin}/playlist/tstohls.m3u`;
             urlInput.classList.replace('text-slate-400', 'text-indigo-600');
             document.getElementById('channelCount').textContent = count;
+            
+            // 更新预览区域的提示文字
+            const statusText = document.getElementById('previewStatusText');
+            if (count > 0 && statusText) {
+                statusText.innerHTML = `<i data-lucide="layout-list" class="w-6 h-6 mb-2 mx-auto opacity-50"></i><p>已加载 ${count} 个频道，请选择频道进行预览</p>`;
+                lucide.createIcons(); // 渲染新加入的图标
+            }
+            
             renderPreview();
         }
 
@@ -218,13 +235,28 @@
         }
 
         function play(ch) {
+            // 1. 清空容器（移除“请选择频道”的提示）
+            const container = document.getElementById('playerContainer');
+            container.innerHTML = ''; 
+
             if(artPlayer) artPlayer.destroy();
+            
+            // 2. 初始化播放器
             artPlayer = new Artplayer({
-                container: '#playerContainer', url: `/stream/${ch.id}/index.m3u8`, isLive: true, autoplay: true, theme: '#4f46e5',
+                container: container, 
+                url: `/stream/${ch.id}/index.m3u8`, 
+                isLive: true, 
+                autoplay: true, 
+                theme: '#4f46e5',
+                fullscreen: true,
+                fullscreenWeb: true,
+                setting: true,
+                // 这里的 customType 保持不变...
                 customType: {
                     m3u8: (v, u) => {
-                        if (Hls.isSupported()) { const hls = new Hls(); hls.loadSource(u); hls.attachMedia(v); }
-                        else { v.src = u; }
+                        if (Hls.isSupported()) { 
+                            const hls = new Hls(); hls.loadSource(u); hls.attachMedia(v); 
+                        } else { v.src = u; }
                     }
                 }
             });
@@ -241,7 +273,6 @@
         document.getElementById('tabConsole').onclick = () => switchTab('console');
         document.getElementById('tabPreview').onclick = () => switchTab('preview');
 
-        // 核心修复：兼容性复制逻辑
         document.getElementById('copyBtn').onclick = () => {
             const val = document.getElementById('m3uUrl').value;
             if (!val || val.includes("等待")) return;
@@ -255,7 +286,6 @@
             if (navigator.clipboard && window.isSecureContext) {
                 navigator.clipboard.writeText(val).then(success);
             } else {
-                // 降级方案：创建一个隐藏的 textarea
                 const textArea = document.createElement("textarea");
                 textArea.value = val;
                 textArea.style.position = "fixed";
