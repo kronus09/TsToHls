@@ -11,67 +11,21 @@
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Lexend:wght@400;600;800&display=swap');
-        
         body { font-family: 'Lexend', sans-serif; background-color: #f8fafc; color: #1e293b; }
         .font-mono-jb { font-family: 'JetBrains Mono', monospace !important; }
-        
-        .main-card {
-            background-color: #ffffff !important;
-            border: 1px solid #f1f5f9;
-            border-radius: 1.5rem;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
-            height: 520px; 
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-        }
-
+        .main-card { background-color: #ffffff !important; border: 1px solid #f1f5f9; border-radius: 1.5rem; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05); height: 520px; overflow: hidden; display: flex; flex-direction: column; }
         .split-box { height: 50%; padding: 2.5rem 2rem; background-color: #ffffff; }
         .border-divider { border-top: 1px solid #f1f5f9; }
-
         .brand-text { background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-        
-        .unified-title {
-            font-size: 1.125rem !important;
-            font-weight: 700 !important;
-            color: #1e293b !important;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            margin-bottom: 1.5rem;
-            font-family: 'JetBrains Mono', monospace !important;
-        }
-
-        /* 优化：圆角减小，彻底去除边框 */
-        .player-wrapper {
-            background-color: #000;
-            border-radius: 0.4rem; /* 圆角变小 */
-            overflow: hidden;
-            aspect-ratio: 16 / 9;
-            position: relative;
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
-            border: none; /* 去除外边框消除黑边感 */
-        }
-
+        .unified-title { font-size: 1.125rem !important; font-weight: 700 !important; color: #1e293b !important; display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1.5rem; font-family: 'JetBrains Mono', monospace !important; }
+        .player-wrapper { background-color: #000; border-radius: 0.4rem; overflow: hidden; aspect-ratio: 16 / 9; position: relative; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2); border: none; }
         #playerContainer { width: 100%; height: 100%; }
-
-        .channel-btn { 
-            transition: all 0.2s ease; 
-            border: 1px solid #f1f5f9; 
-            border-radius: 0.5rem; 
-            background: white; 
-            padding: 0.6rem;
-            display: flex;
-            align-items: center;
-            gap: 0.6rem;
-            text-align: left;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.03);
-        }
-        .channel-btn:hover { border-color: #4f46e5; transform: translateY(-1px); }
-        
-        .group-tag { transition: all 0.2s; border: 1px solid #e2e8f0; border-radius: 0.75rem; }
+        .channel-btn { transition: all 0.2s ease; border: 1px solid #f1f5f9; border-radius: 0.5rem; background: white; padding: 0.6rem; display: flex; align-items: center; gap: 0.6rem; text-align: left; box-shadow: 0 1px 2px rgba(0,0,0,0.03); cursor: pointer; }
+        .channel-btn:hover { border-color: #4f46e5; transform: translateY(-1px); background: #f5f3ff; }
+        .group-tag { transition: all 0.2s; border: 1px solid #e2e8f0; border-radius: 0.75rem; cursor: pointer; }
         .group-tag.active { background-color: #4f46e5; color: white; border-color: #4f46e5; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
+        #dropZone * { pointer-events: none; }
     </style>
 </head>
 <body class="min-h-screen">
@@ -79,7 +33,7 @@
         <div class="max-w-7xl mx-auto px-6 py-6 flex justify-between items-center">
             <div class="flex items-center gap-3">
                 <i data-lucide="play" class="w-8 h-8 text-indigo-600"></i>
-                <h1 class="text-3xl font-extrabold brand-text">TsToHls <span class="text-slate-300 font-mono-jb text-sm ml-2">v1.0.1</span></h1>
+                <h1 class="text-3xl font-extrabold brand-text">TsToHls <span class="text-slate-300 font-mono-jb text-sm ml-2">v1.0.3</span></h1>
             </div>
             <nav class="flex gap-8">
                 <button id="tabConsole" class="font-bold pb-2 border-b-4 border-indigo-600 text-indigo-600">系统控制</button>
@@ -93,7 +47,7 @@
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
                 <div class="main-card p-8">
                     <h2 class="unified-title"><i data-lucide="upload-cloud" class="w-5 h-5 text-indigo-500"></i>上传 M3U 文件</h2>
-                    <div id="dropZone" class="flex-grow flex flex-col justify-center items-center bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl cursor-pointer">
+                    <div id="dropZone" class="flex-grow flex flex-col justify-center items-center bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl cursor-pointer transition-all duration-300">
                         <div id="dropZoneContent" class="text-center">
                             <i data-lucide="file-plus" class="w-12 h-12 text-slate-300 mx-auto mb-4"></i>
                             <p class="text-slate-500 font-semibold">拖拽或点击选择 M3U 文件</p>
@@ -118,7 +72,7 @@
                         </div>
                     </div>
                     <div class="split-box border-divider flex flex-col justify-center">
-                        <h2 class="unified-title"><i data-lucide="link-2" class="w-5 h-5 text-indigo-500"></i>转换结果</h2>
+                        <h2 class="unified-title"><i data-lucide="link-2" class="w-5 h-5 text-indigo-500"></i>通用订阅地址</h2>
                         <div class="flex gap-2">
                             <input type="text" id="m3uUrl" readonly placeholder="等待转换..." class="flex-1 px-5 py-4 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-400 font-mono-jb outline-none">
                             <button id="copyBtn" class="px-8 py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-md">复制</button>
@@ -133,7 +87,7 @@
             <div class="max-w-6xl mx-auto">
                 <div class="player-wrapper mb-8">
                     <div id="playerContainer" class="w-full h-full flex items-center justify-center text-slate-400 font-bold">
-                        <p id="previewStatusText">请在系统控制页面上传文件并转换</p>
+                        <p id="previewStatusText">数据同步中...</p>
                     </div>
                 </div>
                 <div id="groupContainer" class="mb-6 flex gap-2 overflow-x-auto no-scrollbar pb-2"></div>
@@ -145,41 +99,190 @@
 
     <template id="footerTemplate">
         <div class="flex justify-center items-center gap-6 text-xs font-medium border-t border-slate-100 pt-10 pb-10">
-            <span class="text-slate-400">Developed by <span class="text-slate-600">kronus09</span></span>
+            <span class="text-slate-400">Developed by <span class="text-slate-600">Gemini</span></span>
             <span class="text-slate-200">|</span>
-            <a href="https://github.com/kronus09/TsToHls" target="_blank" class="flex items-center gap-1.5 text-slate-500 hover:text-indigo-600 transition-colors">
-                <i data-lucide="github" class="w-4 h-4"></i> GitHub Repo
-            </a>
-            <span class="text-slate-200">|</span>
-            <span class="text-slate-400 font-mono-jb">v1.0.1</span>
+            <span class="text-slate-400 font-mono-jb">v1.0.3</span>
         </div>
     </template>
 
     <script>
         let channels = [];
-        let currentGroup = '';
+        let currentGroup = ''; // 1. 初始设为空，等待数据加载后动态决定
         let artPlayer = null;
 
         function init() {
             const ft = document.getElementById('footerTemplate').innerHTML;
             document.querySelectorAll('.footer-target').forEach(el => el.innerHTML = ft);
             lucide.createIcons();
+            setupDragAndDrop();
+            loadListFromServer();
         }
 
-        const fileInput = document.getElementById('fileInput');
-        const uploadBtn = document.getElementById('uploadBtn');
-        const dropZone = document.getElementById('dropZone');
+        async function loadListFromServer() {
+            console.log("--- 列表同步启动 ---");
+            try {
+                const res = await fetch('/api/list?cache_bust=' + Date.now());
+                if (!res.ok) throw new Error("服务器响应异常: " + res.status);
+                
+                const rawData = await res.json();
+                
+                // 适配后端新出的 Channel 数组结构
+                let list = [];
+                if (Array.isArray(rawData)) {
+                    list = rawData;
+                } else if (rawData && typeof rawData === 'object') {
+                    list = rawData.channels || rawData.list || rawData.data || [];
+                }
 
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(n => {
-            dropZone.addEventListener(n, e => { e.preventDefault(); e.stopPropagation(); });
-        });
-        dropZone.onclick = () => fileInput.click();
-        fileInput.onchange = () => {
-            if(fileInput.files[0]) {
-                document.getElementById('dropZoneContent').innerHTML = `<i data-lucide="check-circle" class="w-12 h-12 text-emerald-500 mx-auto mb-4"></i><p class="text-indigo-600 font-bold">${fileInput.files[0].name}</p>`;
-                lucide.createIcons();
+                if (list.length > 0) {
+                    channels = list;
+                    updateUI(channels.length);
+                    return true;
+                }
+            } catch (e) { 
+                console.error("同步失败详情:", e); 
+            }
+            return false;
+        }
+
+        function setupDragAndDrop() {
+            const fileInput = document.getElementById('fileInput');
+            const dropZone = document.getElementById('dropZone');
+            window.addEventListener("dragover", e => e.preventDefault(), false);
+            window.addEventListener("drop", e => e.preventDefault(), false);
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.classList.add('border-indigo-500', 'bg-indigo-50', 'scale-[1.01]');
+            });
+            ['dragleave', 'drop'].forEach(n => {
+                dropZone.addEventListener(n, () => {
+                    dropZone.classList.remove('border-indigo-500', 'bg-indigo-50', 'scale-[1.01]');
+                });
+            });
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    fileInput.files = files;
+                    handleFileSelect(files[0].name);
+                }
+            });
+            dropZone.onclick = () => fileInput.click();
+            fileInput.onchange = () => { if(fileInput.files[0]) handleFileSelect(fileInput.files[0].name); };
+        }
+
+        function handleFileSelect(name) {
+            document.getElementById('dropZoneContent').innerHTML = `
+                <i data-lucide="check-circle" class="w-12 h-12 text-emerald-500 mx-auto mb-4"></i>
+                <p class="text-indigo-600 font-bold">已选: ${name}</p>
+                <p class="text-xs text-slate-400 mt-2">点击下方按钮提交后端转换</p>
+            `;
+            lucide.createIcons();
+        }
+
+        document.getElementById('uploadBtn').onclick = async () => {
+            const fileInput = document.getElementById('fileInput');
+            if(!fileInput.files[0]) return fileInput.click();
+            
+            const btn = document.getElementById('uploadBtn');
+            btn.textContent = "正在转换，请等待后端完成...";
+            btn.disabled = true;
+
+            const fd = new FormData();
+            fd.append('m3uFile', fileInput.files[0]);
+            
+            try {
+                const res = await fetch('/api/upload', { method: 'POST', body: fd });
+                if (res.ok) {
+                    btn.textContent = "转换完成，同步结果...";
+                    for(let i=0; i<3; i++) {
+                        await new Promise(r => setTimeout(r, 1000));
+                        const ok = await loadListFromServer();
+                        if(ok) break;
+                    }
+                }
+            } catch (e) { 
+                alert("无法连接到服务器");
+            } finally {
+                btn.textContent = "开始转换";
+                btn.disabled = false;
             }
         };
+
+        function updateUI(count) {
+            const urlInput = document.getElementById('m3uUrl');
+            urlInput.value = `${window.location.origin}/playlist/tstohls.m3u`;
+            urlInput.classList.replace('text-slate-400', 'text-indigo-600');
+            urlInput.classList.add('font-bold');
+            
+            document.getElementById('channelCount').textContent = count;
+            document.getElementById('previewStatusText').textContent = "就绪，请选择频道";
+            renderPreview();
+        }
+
+        function renderPreview() {
+            if (!channels || channels.length === 0) return;
+            
+            // 2. 提取并排序实际分组
+            const groupsSet = new Set();
+            channels.forEach(ch => { if(ch.group) groupsSet.add(ch.group); });
+            let keys = Array.from(groupsSet).sort();
+            
+            // 3. 将“全部”强制放到最后
+            keys.push('全部');
+
+            // 4. 核心逻辑：如果当前没有选组（比如刚加载），默认选中第一个组
+            if (!currentGroup && keys.length > 0) {
+                currentGroup = keys[0]; 
+            }
+
+            const gc = document.getElementById('groupContainer');
+            gc.innerHTML = '';
+            keys.forEach(g => {
+                const btn = document.createElement('button');
+                const isActive = currentGroup === g;
+                btn.className = `group-tag px-4 py-2 text-xs font-bold whitespace-nowrap ${isActive ? 'active' : 'bg-white text-slate-400'}`;
+                btn.textContent = g;
+                btn.onclick = () => { 
+                    currentGroup = g; 
+                    renderPreview(); 
+                };
+                gc.appendChild(btn);
+            });
+
+            const grid = document.getElementById('channelGrid');
+            grid.innerHTML = '';
+            
+            // 5. 过滤逻辑：匹配当前组
+            const filtered = currentGroup === '全部' ? channels : channels.filter(c => c.group === currentGroup);
+            
+            filtered.forEach(ch => {
+                const b = document.createElement('div');
+                b.className = 'channel-btn';
+                const logoSrc = ch.logo || 'https://cdn-icons-png.flaticon.com/512/732/732232.png';
+                b.innerHTML = `
+                    <img src="${logoSrc}" class="w-6 h-6 object-contain shrink-0" onerror="this.src='https://cdn-icons-png.flaticon.com/512/732/732232.png'">
+                    <span class="text-[11px] font-bold text-slate-700 truncate">${ch.name}</span>`;
+                b.onclick = () => play(ch);
+                grid.appendChild(b);
+            });
+        }
+
+        function play(ch) {
+            const url = `/stream/${ch.id}/index.m3u8`;
+            if(artPlayer) artPlayer.destroy();
+            document.getElementById('playerContainer').innerHTML = '';
+            artPlayer = new Artplayer({
+                container: '#playerContainer', url: url, isLive: true, autoplay: true, theme: '#4f46e5',
+                customType: {
+                    m3u8: function(video, url) {
+                        if (Hls.isSupported()) {
+                            const hls = new Hls(); hls.loadSource(url); hls.attachMedia(video);
+                        } else { video.src = url; }
+                    }
+                }
+            });
+        }
 
         function switchTab(t) {
             const isC = t === 'console';
@@ -188,117 +291,42 @@
             document.getElementById('tabConsole').className = isC ? 'font-bold pb-2 border-b-4 border-indigo-600 text-indigo-600' : 'font-bold pb-2 border-b-4 border-transparent text-slate-400';
             document.getElementById('tabPreview').className = !isC ? 'font-bold pb-2 border-b-4 border-indigo-600 text-indigo-600' : 'font-bold pb-2 border-b-4 border-transparent text-slate-400';
         }
+
         document.getElementById('tabConsole').onclick = () => switchTab('console');
         document.getElementById('tabPreview').onclick = () => switchTab('preview');
-
-        uploadBtn.onclick = async () => {
-            if(!fileInput.files[0]) return fileInput.click();
-            const fd = new FormData();
-            fd.append('m3uFile', fileInput.files[0]);
-            try {
-                const res = await fetch('/api/upload', { method: 'POST', body: fd });
-                const data = await res.json();
-                channels = data.channels || [];
-                updateUI(fileInput.files[0].name, channels.length);
-            } catch (e) { console.error(e); }
-        };
-
-        function updateUI(name, count) {
-            const urlInput = document.getElementById('m3uUrl');
-            urlInput.value = `${window.location.origin}/api/download/converted_${name}`;
-            urlInput.classList.remove('text-slate-400');
-            urlInput.classList.add('text-indigo-600', 'font-bold');
-            document.getElementById('channelCount').textContent = count;
-            document.getElementById('dropZoneContent').innerHTML = `<i data-lucide="check-circle" class="w-12 h-12 text-emerald-500 mx-auto mb-4"></i><p class="text-indigo-900 font-bold">已加载: ${name}</p>`;
-            const statusText = document.getElementById('previewStatusText');
-            if (statusText) statusText.textContent = "就绪，请选择频道播放";
-            lucide.createIcons();
-            renderPreview();
-        }
-
-        function renderPreview() {
-            if (!channels || channels.length === 0) return;
-            const groups = {};
-            channels.forEach(ch => { const g = ch.Group || '其他'; if(!groups[g]) groups[g] = []; groups[g].push(ch); });
-            const keys = Object.keys(groups).sort();
-            if(!currentGroup && keys.length) currentGroup = keys[0];
-
-            const gc = document.getElementById('groupContainer');
-            gc.innerHTML = '';
-            [...keys, '全部'].forEach(g => {
-                const btn = document.createElement('button');
-                btn.className = `group-tag px-4 py-2 text-xs font-bold whitespace-nowrap ${currentGroup === g ? 'active' : 'bg-white text-slate-400'}`;
-                btn.textContent = g;
-                btn.onclick = () => { currentGroup = g; renderPreview(); };
-                gc.appendChild(btn);
-            });
-
-            const grid = document.getElementById('channelGrid');
-            grid.innerHTML = '';
-            (currentGroup === '全部' ? channels : groups[currentGroup])?.forEach(ch => {
-                const b = document.createElement('button');
-                b.className = 'channel-btn';
-                // 修改：仅保留 Logo 和名称
-                b.innerHTML = `
-                    <img src="${ch.Logo}" class="w-6 h-6 object-contain shrink-0" onerror="this.src='https://cdn-icons-png.flaticon.com/512/732/732232.png'">
-                    <span class="text-[11px] font-bold text-slate-700 truncate leading-tight">${ch.Name}</span>`;
-                b.onclick = () => play(ch);
-                grid.appendChild(b);
-            });
-        }
-
-        function play(ch) {
-            const url = `/stream/${ch.ID}/index.m3u8`;
-            if(artPlayer) artPlayer.destroy();
-            document.getElementById('playerContainer').innerHTML = '';
-            artPlayer = new Artplayer({
-                container: '#playerContainer', 
-                url: url, 
-                isLive: true, 
-                autoplay: true, 
-                theme: '#4f46e5',
-                fullscreen: true,
-                fullscreenWeb: true,
-                autoSize: true, // 确保播放器尺寸自动贴合容器
-                customType: {
-                    m3u8: function(video, url) {
-                        if (Hls.isSupported()) {
-                            const hls = new Hls();
-                            hls.loadSource(url);
-                            hls.attachMedia(video);
-                        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                            video.src = url;
-                        }
-                    }
-                }
-            });
-        }
-
         document.getElementById('copyBtn').onclick = () => {
             const val = document.getElementById('m3uUrl').value;
-            if (!val || val === "等待转换...") return;
+            if (!val || val.includes("等待")) return;
             navigator.clipboard.writeText(val);
-            const b = document.getElementById('copyBtn');
-            b.textContent = '成功';
+            const b = document.getElementById('copyBtn'); b.textContent = '已复制';
             setTimeout(() => b.textContent = '复制', 2000);
         };
 
         async function checkStatus() {
             try {
-                const r = await fetch('/api/status');
+                // 增加随机数防止浏览器缓存结果
+                const r = await fetch('/api/status?t=' + Date.now());
+                if (!r.ok) return;
                 const d = await r.json();
-                document.getElementById('processCount').textContent = d.active_processes || 0;
-                if(d.filename && (!channels || channels.length === 0)) {
-                    channels = d.channels || [];
-                    updateUI(d.filename, d.channel_count);
+                
+                const el = document.getElementById('processCount');
+                if (el) {
+                    // 确保后端返回的 active_count 确实被更新了
+                    el.textContent = d.active_count;
+                    // 调试用：控制台输出一下
+                    // console.log("当前活跃进程:", d.active_count);
                 }
-            } catch(e){}
+            } catch(e) {
+                console.error("轮询状态失败:", e);
+            }
         }
 
-        window.onload = () => {
-            init();
-            checkStatus();
-            setInterval(checkStatus, 3000);
+        window.onload = () => { 
+            init(); 
+            // 立即执行一次
+            checkStatus(); 
+            // 启动定时器，建议缩短到 3 秒以便观察
+            setInterval(checkStatus, 3000); 
         };
     </script>
 </body>

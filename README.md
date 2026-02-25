@@ -25,12 +25,21 @@ services:
     ports:
       - "15140:15140"
     volumes:
-      - ./data/m3u:/app/data/m3u  # M3U 文件持久化存储
+      - ./m3u:/app/m3u
+      # 如果你需要手动上传原始 iptv.m3u 到容器，也可以映射整个根目录或特定文件
+      # - ./iptv.m3u:/app/iptv.m3u
     tmpfs:
-      - /app/data/hls:size=512M,mode=1777  # HLS 切片存放于内存盘 (RAM Disk)
+      # 将切片目录 hls_temp 挂载到内存中
+      # size=512M 足以支撑 10-20 个频道同时点播（每个频道切片约占用 20-30MB）
+      - /app/hls_temp:size=512M,mode=1777,exec
     environment:
       - GIN_MODE=release
       - TZ=Asia/Shanghai
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 ```
 
 2. 启动服务：

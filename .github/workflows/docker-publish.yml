@@ -3,7 +3,7 @@ name: Build and Publish Docker Image
 on:
   push:
     tags:
-      - 'v*' # 当推送以 v 开头的标签时触发，如 v1.0.1
+      - 'v*'
 
 env:
   REGISTRY: ghcr.io
@@ -20,6 +20,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # --- 新增：设置 QEMU，用于支持多架构构建 ---
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      # --- 新增：设置 Docker Buildx ---
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Log in to the Container registry
         uses: docker/login-action@v3
         with:
@@ -32,11 +40,20 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # 增加 latest 标签自动更新逻辑
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable=${{ github.ref_type == 'tag' }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
+          # --- 优化点：支持 amd64 (普通电脑/服务器) 和 arm64 (树莓派/新群晖/M1芯片) ---
+          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # 使用缓存加速构建
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

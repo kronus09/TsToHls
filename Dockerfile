@@ -3,11 +3,11 @@
 # ===========================================
 FROM golang:1.23-alpine AS builder
 
-# 设置 Go 环境（确保跨平台编译稳定）
+# 设置 Go 环境
 ENV CGO_ENABLED=0 GOOS=linux
 WORKDIR /app
 
-# 优化点：先拷贝 mod 文件，利用 Docker 缓存层加速依赖下载
+# 利用 Docker 缓存层加速依赖下载
 COPY go.mod go.sum ./
 RUN go mod download
 
@@ -19,10 +19,10 @@ RUN go build -o tstohls .
 # ===========================================
 FROM alpine:latest
 
-# 安装 FFmpeg 和 基础证书（用于访问 HTTPS 链接）
+# 安装 FFmpeg (含ffprobe) 和 基础证书
 RUN apk add --no-cache ffmpeg ca-certificates tzdata
 
-# 设置时区为上海（防止日志时间对不上）
+# 设置时区为上海
 ENV TZ=Asia/Shanghai
 
 WORKDIR /app
@@ -32,8 +32,10 @@ COPY --from=builder /app/tstohls .
 # 拷贝静态资源
 COPY --from=builder /app/web ./web
 
-# 优化点：创建必要的持久化目录，确保即使没有数据也能启动
-RUN mkdir -p ./data/hls ./data/m3u
+# --- 核心修改：创建符合最新逻辑的目录 ---
+# 1. m3u: 存放 mapping.json 和订阅文件
+# 2. hls_temp: 存放 FFmpeg 实时生成的切片文件
+RUN mkdir -p ./m3u ./hls_temp
 
 # 暴露端口
 EXPOSE 15140

@@ -1,13 +1,25 @@
-version: '3.8'
-
 services:
   tstohls:
-    image: tstohls
+    image: ghcr.io/kronus09/tstohls:latest
     container_name: tstohls
+    restart: unless-stopped
     ports:
       - "15140:15140"
     volumes:
-      - ./data/m3u:/app/data/m3u
+      # 映射生成的 mapping.json 和新 m3u 所在的目录到宿主机
+      # 这样你重启容器后，之前验证过的频道信息不会丢失，不用重新探测
+      - ./m3u:/app/m3u
+      # 如果你需要手动上传原始 iptv.m3u 到容器，也可以映射整个根目录或特定文件
+      # - ./iptv.m3u:/app/iptv.m3u
     tmpfs:
-      - /app/data/hls:size=512m
-    restart: always
+      # 将新的切片目录 hls_temp 挂载到内存中
+      # size=512M 足以支撑 10-20 个频道同时点播（每个频道切片约占用 20-30MB）
+      - /app/hls_temp:size=512M,mode=1777,exec
+    environment:
+      - GIN_MODE=release
+      - TZ=Asia/Shanghai
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

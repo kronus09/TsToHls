@@ -2,147 +2,177 @@ package parser
 
 import (
 	"bufio"
-	"crypto/md5"
-	"encoding/hex"
+	"context"
+	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
+	"sync"
+	"time"
 )
 
-// Channel 表示一个电视频道的信息
 type Channel struct {
-	ID          string // 对原始URL进行MD5加密生成的唯一ID
-	Name        string // 频道名称，从 #EXTINF 行提取
-	Group       string // 分组名称，对应 group-title
-	Logo        string // 频道Logo，对应 tvg-logo
-	OriginalURL string // 原始TS流链接
-	ProxyURL    string // 本地生成的代理m3u8链接
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Logo  string `json:"logo"`
+	Group string `json:"group"`
+	Url   string `json:"url"`
 }
 
-// ParseAndRewrite 解析原始M3U文件并生成重写后的内容
-// 参数:
-//   - filePath: 原始M3U文件路径
-//   - hostAddr: 本机地址(如 "127.0.0.1:15140")，用于生成代理URL
-//
-// 返回值:
-//   - []Channel: 解析出的频道列表
-//   - string: 重写后的M3U内容
-//   - error: 解析错误时返回
-func ParseAndRewrite(filePath, hostAddr string) ([]Channel, string, error) {
-	file, err := os.Open(filePath)
+// ValidateStream：探测并只保留 H.264 视频流
+func ValidateStream(url string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second) // 缩短点超时
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "ffprobe",
+		"-v", "error",
+		"-probesize", "32",
+		"-analyzeduration", "0",
+		"-select_streams", "v:0",
+		"-show_entries", "stream=codec_name",
+		"-of", "csv=p=0",
+		url)
+
+	out, err := cmd.Output()
 	if err != nil {
-		return nil, "", fmt.Errorf("打开文件失败: %v", err)
+		return false
+	}
+
+	// 彻底清理不可见字符
+	codec := strings.ToLower(strings.TrimSpace(string(out)))
+	codec = strings.ReplaceAll(codec, "\n", "")
+	codec = strings.ReplaceAll(codec, "\r", "")
+
+	// 必须包含 h264 或 avc 且不能为空
+	if codec != "" && (strings.Contains(codec, "h264") || strings.Contains(codec, "avc")) {
+		return true
+	}
+	return false
+}
+
+func ParseAndGenerate(inputPath, serverAddr string) ([]Channel, error) {
+	outputDir := "m3u"
+	os.MkdirAll(outputDir, 0755)
+
+	file, err := os.Open(inputPath)
+	if err != nil {
+		return nil, err
 	}
 	defer file.Close()
 
-	var channels []Channel
-	var output strings.Builder
-	output.WriteString("#EXTM3U\n") // 写入M3U文件头
-
+	var rawChannels []Channel
 	scanner := bufio.NewScanner(file)
-	var currentChannel *Channel
 
+	// 正则表达式匹配
+	reName := regexp.MustCompile(`tvg-name="([^"]*)"`)
+	reLogo := regexp.MustCompile(`tvg-logo="([^"]*)"`)
+	reGroup := regexp.MustCompile(`group-title="([^"]*)"`)
+
+	var current Channel
+	idx := 1
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
 			continue
 		}
 
+		// 1. 跳过 M3U 头部行
+		if strings.HasPrefix(strings.ToUpper(line), "EXTM3U") || strings.HasPrefix(line, "#EXTM3U") {
+			continue
+		}
+
+		// 2. 解析信息行
 		if strings.HasPrefix(line, "#EXTINF:") {
-			// 解析 #EXTINF 行
-			name, group, err := parseExtinfLine(line)
-			if err != nil {
-				return nil, "", fmt.Errorf("解析EXTINF行失败: %v", err)
+			// 优先获取逗号后的显示名称
+			if lastComma := strings.LastIndex(line, ","); lastComma != -1 {
+				current.Name = line[lastComma+1:]
 			}
-
-			currentChannel = &Channel{
-				Name:  name,
-				Group: group,
-				Logo:  "",
+			// 正则补充其他信息
+			if m := reName.FindStringSubmatch(line); len(m) > 1 {
+				current.Name = m[1]
 			}
-
-			// 提取 tvg-logo
-			logoRegex := regexp.MustCompile(`tvg-logo="([^"]*)"`)
-			if matches := logoRegex.FindStringSubmatch(line); len(matches) > 1 {
-				currentChannel.Logo = matches[1]
+			if m := reLogo.FindStringSubmatch(line); len(m) > 1 {
+				current.Logo = m[1]
 			}
-		} else if strings.HasPrefix(line, "http://") || strings.HasPrefix(line, "https://") || strings.HasPrefix(line, "rtp://") {
-			// 解析URL行
-			if currentChannel == nil {
-				continue
+			if m := reGroup.FindStringSubmatch(line); len(m) > 1 {
+				current.Group = m[1]
 			}
+		} else if !strings.HasPrefix(line, "#") {
+			// 3. 处理地址行（必须以特定协议开头）
+			lowerLine := strings.ToLower(line)
 
-			// 生成唯一ID (原始URL的MD5前16位)
-			id := generateID(line)
-			currentChannel.ID = id
-			currentChannel.OriginalURL = line
-			currentChannel.ProxyURL = fmt.Sprintf("http://%s/live/%s/index.m3u8", hostAddr, id)
+			// 严格准入：必须以协议开头，且不能是图片后缀
+			isValidProtocol := strings.HasPrefix(lowerLine, "http://") ||
+				strings.HasPrefix(lowerLine, "https://") ||
+				strings.HasPrefix(lowerLine, "rtp://") ||
+				strings.HasPrefix(lowerLine, "udp://")
 
-			// 添加到频道列表
-			channels = append(channels, *currentChannel)
+			isImage := strings.HasSuffix(lowerLine, ".png") ||
+				strings.HasSuffix(lowerLine, ".jpg") ||
+				strings.HasSuffix(lowerLine, ".jpeg")
 
-			// 写入重写后的M3U内容
-			output.WriteString(fmt.Sprintf("#EXTINF:-1 tvg-name=\"%s\" group-title=\"%s\", %s\n",
-				currentChannel.Name, currentChannel.Group, currentChannel.Name))
-			output.WriteString(currentChannel.ProxyURL + "\n")
-
-			currentChannel = nil
+			if isValidProtocol && !isImage {
+				current.Url = line
+				current.ID = fmt.Sprintf("ch%03d", idx)
+				if current.Name == "" {
+					current.Name = fmt.Sprintf("未命名-%d", idx)
+				}
+				rawChannels = append(rawChannels, current)
+				current = Channel{} // 重置对象准备下一个
+				idx++
+			}
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		return nil, "", fmt.Errorf("读取文件失败: %v", err)
+	fmt.Printf("📝 预扫描完成，准备验证 %d 个视频流地址...\n", len(rawChannels))
+
+	var validChannels []Channel
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	limit := make(chan struct{}, 5)
+
+	for _, ch := range rawChannels {
+		wg.Add(1)
+		go func(c Channel) {
+			defer wg.Done()
+			limit <- struct{}{}
+			if ValidateStream(c.Url) {
+				mu.Lock()
+				validChannels = append(validChannels, c)
+				mu.Unlock()
+				fmt.Printf("✅ 验证通过: %s\n", c.Name)
+			}
+			<-limit
+		}(ch)
+	}
+	wg.Wait()
+
+	// 排序
+	sort.Slice(validChannels, func(i, j int) bool {
+		return validChannels[i].ID < validChannels[j].ID
+	})
+
+	// 1. 生成订阅 m3u
+	m3uPath := filepath.Join(outputDir, "tstohls.m3u")
+	mFile, _ := os.Create(m3uPath)
+	defer mFile.Close()
+	mFile.WriteString("#EXTM3U\n")
+
+	for _, ch := range validChannels {
+		proxyUrl := fmt.Sprintf("%s/stream/%s/index.m3u8", serverAddr, ch.ID)
+		mFile.WriteString(fmt.Sprintf("#EXTINF:-1 tvg-name=\"%s\" tvg-logo=\"%s\" group-title=\"%s\",%s\n%s\n",
+			ch.Name, ch.Logo, ch.Group, ch.Name, proxyUrl))
 	}
 
-	return channels, output.String(), nil
-}
+	// 2. 生成 mapping.json
+	jsonPath := filepath.Join(outputDir, "mapping.json")
+	jsonData, _ := json.MarshalIndent(validChannels, "", "  ")
+	os.WriteFile(jsonPath, jsonData, 0644)
 
-// parseExtinfLine 解析 #EXTINF 行，提取频道名、分组和logo
-// 示例行: #EXTINF:-1 tvg-id="CCTV1" tvg-name="CCTV-1" tvg-logo="CCTV1.png" group-title="央视",CCTV-1 综合
-func parseExtinfLine(line string) (name, group string, err error) {
-	// 提取 group-title
-	groupRegex := regexp.MustCompile(`group-title="([^"]*)"`)
-	if matches := groupRegex.FindStringSubmatch(line); len(matches) > 1 {
-		group = matches[1]
-	}
-
-	// 提取 tvg-name
-	nameRegex := regexp.MustCompile(`tvg-name="([^"]*)"`)
-	if matches := nameRegex.FindStringSubmatch(line); len(matches) > 1 {
-		name = matches[1]
-	}
-
-	// 如果 tvg-name 不存在，则取逗号后的内容作为频道名
-	if name == "" {
-		if lastComma := strings.LastIndex(line, ","); lastComma != -1 {
-			name = strings.TrimSpace(line[lastComma+1:])
-		}
-	}
-
-	// 如果都没有提取到，则使用默认值
-	if name == "" {
-		name = "未知频道"
-	}
-	if group == "" {
-		group = "默认分组"
-	}
-
-	return name, group, nil
-}
-
-// generateID 生成URL的唯一ID (MD5前16位)
-func generateID(url string) string {
-	hash := md5.Sum([]byte(url))
-	return hex.EncodeToString(hash[:])[:16]
-}
-
-// GetChannelByID 从频道列表中查找指定ID的频道
-func GetChannelByID(channels []Channel, id string) *Channel {
-	for _, ch := range channels {
-		if ch.ID == id {
-			return &ch
-		}
-	}
-	return nil
+	fmt.Printf("🚀 全部处理完成！有效视频频道: %d 个\n", len(validChannels))
+	return validChannels, nil
 }

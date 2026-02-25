@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -9,219 +10,196 @@ import (
 	"time"
 )
 
-// ProcessInfo FFmpeg进程信息结构体
-// 包含进程对象、最后访问时间和频道ID
 type ProcessInfo struct {
-	Cmd        *exec.Cmd // FFmpeg进程对象
-	LastAccess time.Time // 最后访问时间，用于LRU清理
-	ChannelID  string    // 频道唯一标识符
+	Cmd        *exec.Cmd
+	LastAccess time.Time
+	ChannelID  string
+	OutputDir  string
 }
 
-// ProcessManager FFmpeg进程管理器
-// 负责管理所有FFmpeg转码进程的生命周期
 type ProcessManager struct {
-	sync.RWMutex                         // 读写锁，保护并发安全
-	Processes    map[string]*ProcessInfo // 存储所有活跃的FFmpeg进程
-	MaxProcesses int                     // 最大并发进程数，默认为5
+	sync.RWMutex
+	Processes    map[string]*ProcessInfo
+	MaxProcesses int
+	MappingPath  string
 }
 
-// NewProcessManager 创建新的进程管理器实例
-// 初始化时会启动后台Goroutine进行自动清理
 func NewProcessManager() *ProcessManager {
 	pm := &ProcessManager{
 		Processes:    make(map[string]*ProcessInfo),
-		MaxProcesses: 5,
+		MaxProcesses: 6,
+		MappingPath:  "m3u/mapping.json",
 	}
-
-	// 启动后台Goroutine，每60秒扫描一次进行自动清理
 	go pm.cleanupLoop()
-
 	return pm
 }
 
-// StartProcess 启动FFmpeg转码进程
-// 参数：
-//   - id: 频道唯一标识符
-//   - inputURL: 输入流URL（可以是HTTP、RTSP、RTMP等）
-//   - outputDir: HLS输出目录
-//
-// 返回值：
-//   - error: 启动失败时返回错误信息
-func (pm *ProcessManager) StartProcess(id, inputURL, outputDir string) error {
+// getRawUrl 保持不变
+func (pm *ProcessManager) getRawUrl(id string) (string, error) {
+	data, err := os.ReadFile(pm.MappingPath)
+	if err != nil {
+		return "", err
+	}
+
+	type Channel struct {
+		ID  string `json:"id"`
+		Url string `json:"url"`
+	}
+
+	var channels []Channel
+	if err := json.Unmarshal(data, &channels); err != nil {
+		return "", fmt.Errorf("解析 mapping.json 失败: %v", err)
+	}
+
+	for _, ch := range channels {
+		if ch.ID == id {
+			return ch.Url, nil
+		}
+	}
+	return "", fmt.Errorf("ID [%s] 不存在", id)
+}
+
+func (pm *ProcessManager) GetM3u8Content(id, baseDir string) ([]byte, error) {
+	out := filepath.Join(baseDir, id)
+	if err := pm.ensureProcess(id, out); err != nil {
+		return nil, err
+	}
+	pm.KeepAlive(id)
+
+	m3u8Path := filepath.Join(out, "index.m3u8")
+	// 等待 FFmpeg 生成首个索引文件
+	for i := 0; i < 60; i++ {
+		if c, err := os.ReadFile(m3u8Path); err == nil {
+			return c, nil
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return nil, fmt.Errorf("等待 HLS 切片生成超时，请检查控制台 FFmpeg 报错")
+}
+
+func (pm *ProcessManager) ensureProcess(id, out string) error {
 	pm.Lock()
 	defer pm.Unlock()
 
-	// 检查进程是否已存在
-	if info, exists := pm.Processes[id]; exists {
-		// 进程已存在，更新最后访问时间并返回
-		info.LastAccess = time.Now()
-		fmt.Printf("[ProcessManager] 进程 %s 已存在，更新最后访问时间\n", id)
+	if _, ok := pm.Processes[id]; ok {
 		return nil
 	}
-
-	// 如果进程数超过最大限制，执行LRU清理
 	if len(pm.Processes) >= pm.MaxProcesses {
-		pm.killOldestProcess()
+		pm.killOldest()
 	}
 
-	// 创建输出目录
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
-		return fmt.Errorf("创建输出目录失败: %v", err)
+	raw, err := pm.getRawUrl(id)
+	if err != nil {
+		return err
 	}
-	// 构建FFmpeg命令参数（优化为秒开配置）
-	// 格式: ffmpeg -i [inputURL] -c:v copy -c:a aac -f hls -hls_time 1 -hls_list_size 5 -hls_flags delete_segments+append_list [outputDir]/index.m3u8
-	outputPath := filepath.Join(outputDir, "index.m3u8")
+
+	// 【修改1】准备干净的工作目录：直接全删，杜绝任何 index.m3u8 残留
+	os.RemoveAll(out)
+	if err := os.MkdirAll(out, 0755); err != nil {
+		return fmt.Errorf("无法创建目录: %v", err)
+	}
+
+	// 【修改2】FFmpeg 参数优化
+	// 针对 Docker 组播环境增加了重试和独立切片标志
 	cmd := exec.Command("ffmpeg",
-		"-i", inputURL, // 输入流URL
-		"-c:v", "copy", // 视频编码保持原样
-		"-c:a", "aac", // 音频转为AAC编码
-		"-f", "hls", // 输出格式为HLS
-		"-hls_time", "1", // 每个HLS切片时长1秒（秒开优化）
-		"-hls_list_size", "5", // 播放列表最多保留5个切片
-		"-hls_flags", "delete_segments+append_list", // 自动删除过期切片并启用动态列表追加
-		"-hls_init_time", "1", // 强制尽快写入初始切片列表（秒开关键参数）
-		outputPath, // 输出文件路径
-	)
+		"-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
+		"-i", raw,
+		"-c:v", "copy",
+		"-c:a", "aac", "-b:a", "128k",
+		"-f", "hls",
+		"-hls_time", "2",
+		"-hls_list_size", "6",
+		"-hls_flags", "delete_segments+discont_start+independent_segments",
+		"-hls_segment_type", "mpegts",
+		filepath.Join(out, "index.m3u8"))
 
-	// 设置工作目录
-	cmd.Dir = ""
+	cmd.Stderr = os.Stderr
 
-	// 启动FFmpeg进程
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("启动FFmpeg进程失败: %v", err)
+		return err
 	}
 
-	// 记录进程信息到Map
 	pm.Processes[id] = &ProcessInfo{
 		Cmd:        cmd,
 		LastAccess: time.Now(),
 		ChannelID:  id,
+		OutputDir:  out,
 	}
 
-	fmt.Printf("[ProcessManager] 成功启动进程 %s，输入: %s，输出: %s\n", id, inputURL, outputPath)
-
-	// 启动后台Goroutine等待进程结束
 	go func() {
 		cmd.Wait()
 		pm.Lock()
-		delete(pm.Processes, id)
+		if p, ok := pm.Processes[id]; ok && p.Cmd == cmd {
+			delete(pm.Processes, id)
+			// 这里根据你的需求，进程自然结束时也可以清理，但通常留给 cleanupLoop 更稳
+		}
 		pm.Unlock()
-		fmt.Printf("[ProcessManager] 进程 %s 已结束\n", id)
 	}()
-
 	return nil
 }
 
-// KeepAlive 更新指定频道的最后访问时间
-// 参数：
-//   - id: 频道唯一标识符
+func (pm *ProcessManager) killOldest() {
+	var oID string
+	var oT time.Time = time.Now()
+	for id, info := range pm.Processes {
+		if oID == "" || info.LastAccess.Before(oT) {
+			oT = info.LastAccess
+			oID = id
+		}
+	}
+	if oID != "" {
+		p := pm.Processes[oID]
+		if p.Cmd.Process != nil {
+			fmt.Printf("🗑️  释放旧进程以达到并发上限: %s\n", oID)
+			p.Cmd.Process.Kill()
+			p.Cmd.Wait() // 确保进程彻底退出
+		}
+		delete(pm.Processes, oID)
+		os.RemoveAll(p.OutputDir) // 立即清理物理文件
+	}
+}
+
 func (pm *ProcessManager) KeepAlive(id string) {
 	pm.Lock()
 	defer pm.Unlock()
-
-	if info, exists := pm.Processes[id]; exists {
-		info.LastAccess = time.Now()
-		fmt.Printf("[ProcessManager] 更新进程 %s 的最后访问时间\n", id)
+	if i, ok := pm.Processes[id]; ok {
+		i.LastAccess = time.Now()
 	}
 }
 
-// killOldestProcess 杀掉LastAccess最早的进程（LRU算法）
-// 必须在持有写锁的情况下调用
-func (pm *ProcessManager) killOldestProcess() {
-	if len(pm.Processes) == 0 {
-		return
-	}
-
-	// 找到LastAccess最早的进程
-	var oldestID string
-	var oldestTime time.Time = time.Now()
-
-	for id, info := range pm.Processes {
-		if oldestTime.IsZero() || info.LastAccess.Before(oldestTime) {
-			oldestTime = info.LastAccess
-			oldestID = id
-		}
-	}
-
-	// 杀掉最老的进程
-	if oldestID != "" {
-		if info, exists := pm.Processes[oldestID]; exists && info.Cmd != nil && info.Cmd.Process != nil {
-			info.Cmd.Process.Kill()
-			fmt.Printf("[ProcessManager] 达到最大进程数 %d，杀掉最老进程 %s\n", pm.MaxProcesses, oldestID)
-		}
-		delete(pm.Processes, oldestID)
-	}
-}
-
-// cleanupLoop 后台清理Goroutine
-// 每60秒扫描一次Map，清理超过3分钟无活动的进程
 func (pm *ProcessManager) cleanupLoop() {
-	ticker := time.NewTicker(60 * time.Second)
-	defer ticker.Stop()
-
+	ticker := time.NewTicker(30 * time.Second)
 	for range ticker.C {
-		pm.cleanup()
-	}
-}
-
-// cleanup 清理超过3分钟无活动的进程
-func (pm *ProcessManager) cleanup() {
-	pm.Lock()
-	defer pm.Unlock()
-
-	now := time.Now()
-	timeout := 3 * time.Minute
-
-	for id, info := range pm.Processes {
-		if now.Sub(info.LastAccess) > timeout {
-			// 杀掉超时进程
-			if info.Cmd != nil && info.Cmd.Process != nil {
-				info.Cmd.Process.Kill()
-				fmt.Printf("[ProcessManager] 进程 %s 超过3分钟无活动，已杀掉\n", id)
+		pm.Lock()
+		now := time.Now()
+		for id, i := range pm.Processes {
+			// 如果 2 分钟没人看，就关掉它
+			if now.Sub(i.LastAccess) > 2*time.Minute {
+				if i.Cmd.Process != nil {
+					i.Cmd.Process.Kill()
+					i.Cmd.Wait()
+				}
+				delete(pm.Processes, id)
+				os.RemoveAll(i.OutputDir) // 关键：清理物理文件，释放 Docker 空间
+				fmt.Printf("🧹 已自动清理闲置流及其物理文件: %s\n", id)
 			}
-			delete(pm.Processes, id)
 		}
+		pm.Unlock()
 	}
 }
 
-// GetActiveCount 获取当前活跃进程数量
 func (pm *ProcessManager) GetActiveCount() int {
 	pm.RLock()
 	defer pm.RUnlock()
 	return len(pm.Processes)
 }
 
-// GetProcesses 获取所有活跃进程的ID列表
 func (pm *ProcessManager) GetProcesses() []string {
 	pm.RLock()
 	defer pm.RUnlock()
-
-	ids := make([]string, 0, len(pm.Processes))
+	var res []string
 	for id := range pm.Processes {
-		ids = append(ids, id)
+		res = append(res, id)
 	}
-	return ids
-}
-
-// StopProcess 停止指定频道的FFmpeg进程
-// 参数：
-//   - id: 频道唯一标识符
-func (pm *ProcessManager) StopProcess(id string) error {
-	pm.Lock()
-	defer pm.Unlock()
-
-	info, exists := pm.Processes[id]
-	if !exists {
-		return fmt.Errorf("进程 %s 不存在", id)
-	}
-
-	if info.Cmd != nil && info.Cmd.Process != nil {
-		if err := info.Cmd.Process.Kill(); err != nil {
-			return fmt.Errorf("杀掉进程失败: %v", err)
-		}
-	}
-
-	delete(pm.Processes, id)
-	fmt.Printf("[ProcessManager] 已停止进程 %s\n", id)
-	return nil
+	return res
 }

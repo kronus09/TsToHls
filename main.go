@@ -1,223 +1,177 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
-	"TsToHls/manager"
-	"TsToHls/parser"
-
-	"github.com/gin-gonic/gin"
+	"tstohls/manager"
+	"tstohls/parser"
 )
+
+var pm *manager.ProcessManager
 
 const (
-	Port         = "15140"      // 服务监听端口
-	HLSOutputDir = "./data/hls" // HLS输出目录
-	M3UInputDir  = "./data/m3u" // 上传的M3U文件目录
-)
-
-// 全局变量
-var (
-	pm               *manager.ProcessManager // FFmpeg进程管理器
-	channelList      []parser.Channel        // 解析后的频道列表
-	originalFileName string                  // 原始上传文件名
+	Port    = "15140"
+	TempDir = "hls_temp"
 )
 
 func main() {
-	// 初始化
+	// 初始化进程管理器
 	pm = manager.NewProcessManager()
-	cleanOutputDirs()
 
-	// 清理并重建m3u目录（上传即覆盖）
-	os.RemoveAll(M3UInputDir)
-	os.MkdirAll(M3UInputDir, 0755)
+	// 确保临时目录存在
+	os.MkdirAll(TempDir, 0755)
+	os.MkdirAll("m3u", 0755)
 
-	// 加载现有的M3U文件
-	if err := loadExistingM3U(); err != nil {
-		fmt.Printf("加载现有M3U文件失败: %v\n", err)
-	}
+	// --- 路由设置 ---
 
-	// 创建Gin引擎
-	r := gin.Default()
-
-	// 静态文件路由
-	r.Static("/web", "./web")       // 前端页面
-	r.Static("/live", HLSOutputDir) // HLS切片文件
-
-	// API路由
-	api := r.Group("/api")
-	{
-		api.POST("/upload", handleUpload)               // 上传M3U文件
-		api.GET("/status", handleStatus)                // 获取服务状态
-		api.GET("/current-status", handleCurrentStatus) // 获取当前状态
-		api.GET("/download/:filename", handleDownload)  // 下载M3U文件
-	}
-
-	// 代理路由
-	r.GET("/stream/:id/index.m3u8", handleStreamRequest)
-
-	// 启动服务
-	fmt.Printf("服务启动，监听端口 %s\n", Port)
-	r.Run(":" + Port)
-}
-
-// loadExistingM3U 加载现有的M3U文件
-func loadExistingM3U() error {
-	files, err := os.ReadDir(M3UInputDir)
-	if err != nil {
-		return err
-	}
-
-	for _, file := range files {
-		if strings.HasSuffix(file.Name(), ".m3u") || strings.HasSuffix(file.Name(), ".m3u8") {
-			m3uPath := filepath.Join(M3UInputDir, file.Name())
-			channels, _, err := parser.ParseAndRewrite(m3uPath, "localhost:"+Port)
-			if err != nil {
-				fmt.Printf("解析现有M3U文件 %s 失败: %v\n", file.Name(), err)
-				continue
-			}
-			// 直接更新channelList，不再使用append
-			channelList = channels
-			break // 只加载第一个文件
-		}
-	}
-	return nil
-}
-
-// cleanOutputDirs 清理输出目录
-func cleanOutputDirs() {
-	os.RemoveAll(HLSOutputDir)
-	os.MkdirAll(HLSOutputDir, 0755)
-	os.MkdirAll(M3UInputDir, 0755)
-}
-
-// handleDownload 处理M3U文件下载
-func handleDownload(c *gin.Context) {
-	filename := c.Param("filename")
-	filePath := filepath.Join(M3UInputDir, filename)
-
-	// 安全检查：防止目录遍历
-	if !strings.HasPrefix(filePath, M3UInputDir) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的文件路径"})
-		return
-	}
-
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "文件不存在"})
-		return
-	}
-
-	c.File(filePath)
-}
-
-// handleUpload 处理M3U文件上传
-func handleUpload(c *gin.Context) {
-	file, err := c.FormFile("m3uFile")
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的上传文件"})
-		return
-	}
-
-	// 清理m3u目录并重建
-	os.RemoveAll(M3UInputDir)
-	os.MkdirAll(M3UInputDir, 0755)
-
-	// 保存上传的文件
-	m3uPath := filepath.Join(M3UInputDir, file.Filename)
-	if err := c.SaveUploadedFile(file, m3uPath); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "文件保存失败"})
-		return
-	}
-
-	// 记录原始文件名
-	originalFileName = file.Filename
-
-	// 解析并重写M3U文件
-	channels, newM3UContent, err := parser.ParseAndRewrite(m3uPath, c.Request.Host)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "解析M3U文件失败: " + err.Error()})
-		return
-	}
-
-	// 更新全局频道列表
-	channelList = channels
-
-	// 保存转换后的M3U文件
-	outputFilename := "converted_" + file.Filename
-	outputPath := filepath.Join(M3UInputDir, outputFilename)
-	if err := os.WriteFile(outputPath, []byte(newM3UContent), 0644); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "无法保存转换后的M3U文件"})
-		return
-	}
-
-	// 返回结果
-	c.JSON(http.StatusOK, gin.H{
-		"channels":         channels,
-		"m3u":              newM3UContent,
-		"m3uUrl":           fmt.Sprintf("http://%s/api/download/%s", c.Request.Host, outputFilename),
-		"originalFileName": file.Filename,
-	})
-}
-
-// handleStreamRequest 处理流请求
-// 访问格式: /stream/[channelID]/index.m3u8
-func handleStreamRequest(c *gin.Context) {
-	id := c.Param("id")
-	channel := parser.GetChannelByID(channelList, id)
-	if channel == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "频道不存在"})
-		return
-	}
-
-	// 准备输出目录
-	outputDir := filepath.Join(HLSOutputDir, id)
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建输出目录失败"})
-		return
-	}
-
-	// 启动FFmpeg转码进程
-	if err := pm.StartProcess(id, channel.OriginalURL, outputDir); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "启动转码进程失败: " + err.Error()})
-		return
-	}
-
-	// 等待HLS文件生成（最多10秒）
-	m3u8Path := filepath.Join(outputDir, "index.m3u8")
-	for i := 0; i < 20; i++ {
-		if _, err := os.Stat(m3u8Path); err == nil {
-			// 文件已生成，重定向到静态文件
-			c.Redirect(http.StatusFound, "/live/"+id+"/index.m3u8")
+	// 1. 静态资源与前端页面
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			http.ServeFile(w, r, filepath.Join("web", "index.html"))
 			return
 		}
-		time.Sleep(500 * time.Millisecond)
+		staticFile := filepath.Join("web", r.URL.Path)
+		if _, err := os.Stat(staticFile); err == nil {
+			http.ServeFile(w, r, staticFile)
+			return
+		}
+		http.NotFound(w, r)
+	})
+
+	// 2. API 接口
+	http.HandleFunc("/api/upload", uploadHandler) // 上传并解析 M3U
+	http.HandleFunc("/api/list", listHandler)     // 获取频道列表 (从 mapping.json)
+	http.HandleFunc("/api/status", statusHandler) // 获取 FFmpeg 进程状态
+
+	// 3. 资源接口
+	http.HandleFunc("/playlist/tstohls.m3u", playlistHandler) // 获取转换后的 M3U 订阅
+	http.HandleFunc("/stream/", streamHandler)                // HLS 流媒体转发
+
+	fmt.Println("-------------------------------------------")
+	fmt.Printf("🚀 TsToHls 服务已启动\n")
+	fmt.Printf("👉 管理界面: http://127.0.0.1:%s\n", Port)
+	fmt.Printf("👉 订阅地址: http://127.0.0.1:%s/playlist/tstohls.m3u\n", Port)
+	fmt.Println("-------------------------------------------")
+
+	log.Fatal(http.ListenAndServe(":"+Port, nil))
+}
+
+// uploadHandler 处理 M3U 上传并触发 parser 解析
+func uploadHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "仅支持 POST 请求", 405)
+		return
 	}
 
-	c.JSON(http.StatusInternalServerError, gin.H{"error": "HLS文件生成超时"})
+	file, header, err := r.FormFile("m3uFile")
+	if err != nil {
+		http.Error(w, "文件上传失败", 400)
+		return
+	}
+	defer file.Close()
+
+	fmt.Printf("📥 接收到文件: %s，开始解析并探测...\n", header.Filename)
+
+	tmpPath := filepath.Join("m3u", "source.m3u")
+	out, err := os.Create(tmpPath)
+	if err != nil {
+		http.Error(w, "创建临时文件失败", 500)
+		return
+	}
+	defer out.Close()
+	io.Copy(out, file)
+
+	// 获取当前服务的基础地址，用于 M3U 文件内的 URL 生成
+	addr := "http://" + r.Host
+
+	// 调用 parser 进行解析和 ffprobe 探测 (此过程较慢)
+	channels, err := parser.ParseAndGenerate(tmpPath, addr)
+	if err != nil {
+		fmt.Printf("❌ 解析失败: %v\n", err)
+		http.Error(w, "解析失败", 500)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	fmt.Fprintf(w, `{"status":"ok", "count": %d, "message": "解析完成"}`, len(channels))
 }
 
-// handleStatus 返回当前系统状态
-func handleStatus(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"active_processes": pm.GetActiveCount(),
-		"channel_count":    len(channelList),
-		"status":           "success",
-		"filename":         originalFileName,
-		"channels":         channelList,
-	})
+// listHandler 读取现有的 mapping.json 并返回给前端
+func listHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+
+	data, err := os.ReadFile("m3u/mapping.json")
+	if err != nil {
+		// 如果文件不存在，返回空数组，匹配前端期待的结构
+		w.Write([]byte("[]"))
+		return
+	}
+	w.Write(data)
 }
 
-// handleCurrentStatus 获取当前状态
-func handleCurrentStatus(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"channelsEmpty":    len(channelList) == 0,
-		"currentFile":      originalFileName,
-		"originalFileName": originalFileName,
-		"channelCount":     len(channelList),
-		"active_processes": pm.GetActiveCount(),
-	})
+// playlistHandler 允许用户下载转换后的 M3U
+func playlistHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/mpegurl")
+	http.ServeFile(w, r, "m3u/tstohls.m3u")
+}
+
+// streamHandler 处理 /stream/{id}/index.m3u8 和 .ts 切片请求
+func streamHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	// 解析路径: /stream/ch001/index.m3u8 -> ["stream", "ch001", "index.m3u8"]
+	p := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(p) < 3 {
+		http.NotFound(w, r)
+		return
+	}
+	id, file := p[1], p[2]
+
+	// 激活或延长进程寿命
+	pm.KeepAlive(id)
+
+	if strings.HasSuffix(file, ".m3u8") {
+		// 获取 HLS 主文件内容
+		content, err := pm.GetM3u8Content(id, TempDir)
+		if err != nil {
+			fmt.Printf("❌ 流启动失败 [%s]: %v\n", id, err)
+			http.Error(w, "流启动失败: "+err.Error(), 500)
+			return
+		}
+		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		w.Write(content)
+	} else {
+		// 静态服务 .ts 切片文件
+		tsPath := filepath.Join(TempDir, id, file)
+		http.ServeFile(w, r, tsPath)
+	}
+}
+
+// statusHandler 返回系统当前的运行状态
+func statusHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+
+	// 使用结构体包裹数据
+	data := struct {
+		ActiveCount int      `json:"active_count"`
+		RunningIDs  []string `json:"running_ids"`
+	}{
+		ActiveCount: pm.GetActiveCount(),
+		RunningIDs:  pm.GetProcesses(),
+	}
+
+	// 正确序列化为 JSON
+	json.NewEncoder(w).Encode(data)
 }
