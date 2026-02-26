@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,9 +25,55 @@ type Channel struct {
 	Url   string `json:"url"`
 }
 
+// downloadLogo 下载图标到本地并返回 web 访问路径
+func downloadLogo(id, remoteURL string) string {
+	if remoteURL == "" {
+		return "/static/logos/favicon.png"
+	}
+
+	// 准备目录
+	logoDir := filepath.Join("m3u", "logos")
+	os.MkdirAll(logoDir, 0755)
+
+	// 提取后缀名
+	ext := filepath.Ext(remoteURL)
+	if ext == "" || len(ext) > 5 {
+		ext = ".png"
+	}
+	fileName := id + ext
+	localPath := filepath.Join(logoDir, fileName)
+	webPath := "/logos/" + fileName
+
+	// 如果文件已存在则跳过
+	if _, err := os.Stat(localPath); err == nil {
+		return webPath
+	}
+
+	// 限制 5 秒超时下载
+	client := http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(remoteURL)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		return "/static/logos/favicon.png"
+	}
+	defer resp.Body.Close()
+
+	out, err := os.Create(localPath)
+	if err != nil {
+		return "/static/logos/favicon.png"
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		return "/static/logos/favicon.png"
+	}
+
+	return webPath
+}
+
 // ValidateStream：探测并只保留 H.264 视频流
 func ValidateStream(url string) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second) // 缩短点超时
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "ffprobe",
@@ -42,12 +90,10 @@ func ValidateStream(url string) bool {
 		return false
 	}
 
-	// 彻底清理不可见字符
 	codec := strings.ToLower(strings.TrimSpace(string(out)))
 	codec = strings.ReplaceAll(codec, "\n", "")
 	codec = strings.ReplaceAll(codec, "\r", "")
 
-	// 必须包含 h264 或 avc 且不能为空
 	if codec != "" && (strings.Contains(codec, "h264") || strings.Contains(codec, "avc")) {
 		return true
 	}
@@ -67,7 +113,6 @@ func ParseAndGenerate(inputPath, serverAddr string) ([]Channel, error) {
 	var rawChannels []Channel
 	scanner := bufio.NewScanner(file)
 
-	// 正则表达式匹配
 	reName := regexp.MustCompile(`tvg-name="([^"]*)"`)
 	reLogo := regexp.MustCompile(`tvg-logo="([^"]*)"`)
 	reGroup := regexp.MustCompile(`group-title="([^"]*)"`)
@@ -80,18 +125,14 @@ func ParseAndGenerate(inputPath, serverAddr string) ([]Channel, error) {
 			continue
 		}
 
-		// 1. 跳过 M3U 头部行
 		if strings.HasPrefix(strings.ToUpper(line), "EXTM3U") || strings.HasPrefix(line, "#EXTM3U") {
 			continue
 		}
 
-		// 2. 解析信息行
 		if strings.HasPrefix(line, "#EXTINF:") {
-			// 优先获取逗号后的显示名称
 			if lastComma := strings.LastIndex(line, ","); lastComma != -1 {
 				current.Name = line[lastComma+1:]
 			}
-			// 正则补充其他信息
 			if m := reName.FindStringSubmatch(line); len(m) > 1 {
 				current.Name = m[1]
 			}
@@ -102,10 +143,7 @@ func ParseAndGenerate(inputPath, serverAddr string) ([]Channel, error) {
 				current.Group = m[1]
 			}
 		} else if !strings.HasPrefix(line, "#") {
-			// 3. 处理地址行（必须以特定协议开头）
 			lowerLine := strings.ToLower(line)
-
-			// 严格准入：必须以协议开头，且不能是图片后缀
 			isValidProtocol := strings.HasPrefix(lowerLine, "http://") ||
 				strings.HasPrefix(lowerLine, "https://") ||
 				strings.HasPrefix(lowerLine, "rtp://") ||
@@ -122,7 +160,7 @@ func ParseAndGenerate(inputPath, serverAddr string) ([]Channel, error) {
 					current.Name = fmt.Sprintf("未命名-%d", idx)
 				}
 				rawChannels = append(rawChannels, current)
-				current = Channel{} // 重置对象准备下一个
+				current = Channel{}
 				idx++
 			}
 		}
@@ -151,12 +189,11 @@ func ParseAndGenerate(inputPath, serverAddr string) ([]Channel, error) {
 	}
 	wg.Wait()
 
-	// 排序
 	sort.Slice(validChannels, func(i, j int) bool {
 		return validChannels[i].ID < validChannels[j].ID
 	})
 
-	// 1. 生成订阅 m3u
+	// 1. 生成订阅 m3u (这里保持使用原始远程 Logo 地址)
 	m3uPath := filepath.Join(outputDir, "tstohls.m3u")
 	mFile, _ := os.Create(m3uPath)
 	defer mFile.Close()
@@ -168,11 +205,20 @@ func ParseAndGenerate(inputPath, serverAddr string) ([]Channel, error) {
 			ch.Name, ch.Logo, ch.Group, ch.Name, proxyUrl))
 	}
 
-	// 2. 生成 mapping.json
+	// 2. 本地化图标并更新 Mapping (用于 index.html)
+	fmt.Println("🖼️ 正在同步下载频道图标至本地...")
+	var localMapping []Channel
+	for _, ch := range validChannels {
+		localCh := ch
+		// 调用下载并更新路径
+		localCh.Logo = downloadLogo(ch.ID, ch.Logo)
+		localMapping = append(localMapping, localCh)
+	}
+
 	jsonPath := filepath.Join(outputDir, "mapping.json")
-	jsonData, _ := json.MarshalIndent(validChannels, "", "  ")
+	jsonData, _ := json.MarshalIndent(localMapping, "", "  ")
 	os.WriteFile(jsonPath, jsonData, 0644)
 
-	fmt.Printf("🚀 全部处理完成！有效视频频道: %d 个\n", len(validChannels))
+	fmt.Printf("🚀 全部处理完成！有效视频频道: %d 个，图标已存至 m3u/logos/\n", len(validChannels))
 	return validChannels, nil
 }

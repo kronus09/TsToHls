@@ -1,0 +1,46 @@
+﻿@import "tailwindcss";
+
+@theme {
+  --font-jetbrains: "JetBrains Mono", monospace;
+}
+
+@layer components {
+  .font-mono-jb { font-family: var(--font-jetbrains) !important; }
+  
+  .main-card { 
+    @apply bg-white border border-slate-100 rounded-[1.5rem] shadow-sm flex flex-col overflow-hidden;
+    height: 520px;
+  }
+  
+  .split-box { @apply h-1/2 p-10 bg-white; }
+  
+  .border-divider { @apply border-t border-slate-50; }
+  
+  .brand-text { 
+    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  
+  .unified-title { 
+    @apply text-lg font-bold text-slate-800 flex items-center gap-2 mb-6;
+    font-family: var(--font-jetbrains) !important;
+  }
+  
+  .player-wrapper { 
+    @apply bg-black rounded-lg overflow-hidden relative shadow-2xl;
+    aspect-ratio: 16 / 9;
+  }
+  
+  .channel-btn { 
+    @apply transition-all duration-200 border border-slate-50 rounded-lg bg-white p-2 flex items-center gap-2 text-left cursor-pointer shadow-sm;
+  }
+  
+  .channel-btn:hover { 
+    @apply border-indigo-600 -translate-y-px bg-indigo-50/50;
+  }
+  
+  .group-tag { @apply transition-all border border-slate-200 rounded-xl cursor-pointer; }
+  
+  .group-tag.active { @apply bg-indigo-600 text-white border-indigo-600; }
+}

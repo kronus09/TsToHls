@@ -35,9 +35,9 @@ COPY --from=builder /app/tstohls .
 COPY --from=builder /app/web ./web
 
 # --- 创建符合最新逻辑的目录 ---
-# 1. m3u: 存放 mapping.json 和订阅文件
+# 1. m3u/logos: 存放频道图标
 # 2. hls_temp: 存放 FFmpeg 实时生成的切片文件
-RUN mkdir -p ./m3u ./hls_temp
+RUN mkdir -p ./m3u/logos ./hls_temp && chmod -R 777 ./m3u ./hls_temp
 
 # 暴露端口
 EXPOSE 15140
