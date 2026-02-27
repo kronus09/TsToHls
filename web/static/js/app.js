@@ -1,322 +1,295 @@
+/**
+ * TsToHls Dashboard Core Logic
+ * Version: 1.2.2
+ * Optimized for local deployment and fixed drag-and-drop bug.
+ */
+
 let channels = [];
 let currentGroup = ''; 
-let artPlayer = null;
+let art = null;
 let isExpertMode = false;
 
-function init() {
-    lucide.createIcons();
+const init = () => {
+    // 初始化图标
+    if (window.lucide) {
+        lucide.createIcons();
+    }
+    setupTabs();
     setupDragAndDrop();
     loadListFromServer();
-    loadConfigFromServer(); 
-}
+    loadConfigFromServer();
+    // 每3秒更新一次资源占用
+    setInterval(checkStatus, 3000);
+};
 
-// --- 配置管理逻辑 ---
+const setupTabs = () => {
+    const btnC = document.getElementById('tabConsole');
+    const btnP = document.getElementById('tabPreview');
+    const pageC = document.getElementById('consolePage');
+    const pageP = document.getElementById('previewPage');
 
-async function loadConfigFromServer() {
-    try {
-        const res = await fetch('/api/config');
-        if (res.ok) {
-            const config = await res.json();
-            const form = document.getElementById('configForm');
-            
-            Object.keys(config).forEach(key => {
-                const input = form.querySelector(`[name="${key}"]`);
-                if (input) {
-                    // 核心修正：强制转为字符串并去掉两端空格
-                    // 这样 JSON 中的 6 就能匹配到 <option value="6">
-                    const val = String(config[key]).trim();
-                    
-                    // 检查该值是否存在于下拉选项中
-                    const optionExists = Array.from(input.options).some(opt => opt.value === val);
-                    
-                    if (optionExists) {
-                        input.value = val;
-                    } else {
-                        // 如果后端的值(如 120)不在预设选项(60, 300)里
-                        // 动态创建一个临时选项，避免显示空白
-                        const newOpt = new Option(val, val);
-                        input.add(newOpt);
-                        input.value = val;
-                        console.warn(`字段 ${key} 的值 ${val} 不在预设选项中，已创建临时项`);
-                    }
-                }
-            });
-        }
-    } catch (e) { 
-        console.error("配置加载失败", e); 
-    }
-}
+    const switchTab = (toConsole) => {
+        btnC.className = toConsole ? "tab-btn active" : "tab-btn inactive";
+        btnP.className = !toConsole ? "tab-btn active" : "tab-btn inactive";
+        pageC.classList.toggle('hidden', !toConsole);
+        pageP.classList.toggle('hidden', toConsole);
 
-function toggleExpertMode() {
-    isExpertMode = !isExpertMode;
-    const btn = document.getElementById('expertModeBtn');
-    const actions = document.getElementById('configActions');
-    const configCard = document.querySelector('.config-card');
-    // 同时也选中所有的 select，因为你 HTML 里全是 select
-    const inputs = document.querySelectorAll('#configForm select, #configForm input');
-
-    if (isExpertMode) {
-        btn.textContent = "退出编辑";
-        btn.classList.add('bg-slate-200', 'text-slate-600');
-        btn.classList.remove('bg-indigo-50', 'text-indigo-600');
-        actions.classList.remove('hidden');
-        inputs.forEach(i => i.disabled = false);
-        configCard.classList.add('is-expert-active'); 
-    } else {
-        btn.textContent = "编辑配置";
-        btn.classList.remove('bg-slate-200', 'text-slate-600');
-        btn.classList.add('bg-indigo-50', 'text-indigo-600');
-        actions.classList.add('hidden');
-        inputs.forEach(i => i.disabled = true);
-        configCard.classList.remove('is-expert-active');
-        loadConfigFromServer(); // 放弃修改，重新加载
-    }
-}
-
-// 绑定编辑按钮
-const expertBtn = document.getElementById('expertModeBtn');
-if(expertBtn) expertBtn.onclick = toggleExpertMode;
-
-    document.getElementById('saveConfigBtn').onclick = async () => {
-        const form = document.getElementById('configForm');
-        const inputs = form.querySelectorAll('select, input');
-        const data = {};
-        
-        // 防御性编程：确保每个字段都正确处理
-        inputs.forEach(el => {
-            const key = el.name;
-            if (!key) return; // 跳过没有 name 属性的元素
-            
-            const value = el.value;
-            const numericFields = ['max_processes', 'hls_time', 'hls_list_size', 'idle_timeout', 'reconnect_delay'];
-
-            if (numericFields.includes(key)) {
-                const num = parseInt(value);
-                // 防御：如果转换失败，给个默认值或跳过，避免传 NaN 导致 400
-                data[key] = isNaN(num) ? 0 : num; 
-            } else {
-                data[key] = value;
-            }
-        });
-
-        console.log("?? 发送给后端的数据:", data); // 调试用：看看数据对不对
-
-        try {
-            const res = await fetch('/api/config', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
-            });
-
-            if (res.ok) {
-                alert("✅ 配置保存成功");
-                location.reload(); 
-            } else {
-                const errText = await res.text();
-                alert("❌ 保存失败: " + errText);
-            }
-        } catch (e) { 
-            alert("❌ 网络错误，请检查后端服务"); 
+        if (!toConsole) {
+            // 预览页显示时重新计算播放器尺寸
+            setTimeout(() => { if(art) art.resize(); }, 150);
+            renderPreview();
         }
     };
 
-document.getElementById('resetConfigBtn').onclick = async () => {
-    if(!confirm("确定重置所有参数吗？")) return;
-    try {
-        const res = await fetch('/api/config?action=reset', { method: 'POST' });
-        if (res.ok) {
-            await loadConfigFromServer();
-            alert("已恢复默认值");
-            // 注意：重置后不需要 toggleExpertMode()，让用户继续决定是否退出
-        }
-    } catch (e) { alert("重置失败"); }
+    btnC.onclick = () => switchTab(true);
+    btnP.onclick = () => switchTab(false);
 };
 
-// --- 原有上传与预览逻辑 (无需改动) ---
-
-async function loadListFromServer() {
-    try {
-        const res = await fetch('/api/list?cache_bust=' + Date.now());
-        if (!res.ok) throw new Error("服务器响应异常");
-        const rawData = await res.json();
-        let list = Array.isArray(rawData) ? rawData : (rawData.channels || []);
-        if (list.length > 0) {
-            channels = list;
-            updateUI(channels.length);
-            return true;
-        }
-    } catch (e) { console.error("同步失败:", e); }
-    return false;
-}
-
-function setupDragAndDrop() {
-    const fileInput = document.getElementById('fileInput');
-    const dropZone = document.getElementById('dropZone');
-    dropZone.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        dropZone.classList.add('border-indigo-500', 'bg-indigo-50');
-    });
-    ['dragleave', 'drop'].forEach(n => {
-        dropZone.addEventListener(n, () => dropZone.classList.remove('border-indigo-500', 'bg-indigo-50'));
-    });
-    dropZone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        if (e.dataTransfer.files.length > 0) {
-            fileInput.files = e.dataTransfer.files;
-            handleFileSelect(e.dataTransfer.files[0].name);
-        }
-    });
-    dropZone.onclick = () => fileInput.click();
-    fileInput.onchange = () => { if(fileInput.files[0]) handleFileSelect(fileInput.files[0].name); };
-}
-
-function handleFileSelect(name) {
-    document.getElementById('dropZoneContent').innerHTML = `
-        <i data-lucide="check-circle" class="w-12 h-12 text-emerald-500 mx-auto mb-4"></i>
-        <p class="text-indigo-600 font-bold">已选: ${name}</p>
-    `;
-    lucide.createIcons();
-}
-
-document.getElementById('uploadBtn').onclick = async () => {
-    const fileInput = document.getElementById('fileInput');
-    if(!fileInput.files[0]) return fileInput.click();
-    const btn = document.getElementById('uploadBtn');
-    btn.textContent = "正在转换..."; btn.disabled = true;
-    const fd = new FormData(); fd.append('m3uFile', fileInput.files[0]);
-    try {
-        const res = await fetch('/api/upload', { method: 'POST', body: fd });
-        if (res.ok) {
-            await new Promise(r => setTimeout(r, 2000));
-            await loadListFromServer();
-        }
-    } finally {
-        btn.textContent = "开始转换"; btn.disabled = false;
-    }
-};
-
-function updateUI(count) {
-    const urlInput = document.getElementById('m3uUrl');
-    urlInput.value = `${window.location.origin}/playlist/tstohls.m3u`;
-    urlInput.classList.replace('text-slate-400', 'text-indigo-600');
-    document.getElementById('channelCount').textContent = count;
-    
-    const statusText = document.getElementById('previewStatusText');
-    if (count > 0 && statusText) {
-        statusText.innerHTML = `<i data-lucide="layout-list" class="w-6 h-6 mb-2 mx-auto opacity-50"></i><p>已加载 ${count} 个频道，请选择频道预览</p>`;
-        lucide.createIcons();
-    }
-    renderPreview();
-}
-
-function renderPreview() {
-    if (!channels.length) return;
-    const groupsSet = new Set();
-    channels.forEach(ch => { if(ch.group) groupsSet.add(ch.group); });
-    let keys = Array.from(groupsSet).sort();
-    keys.push('全部');
-    if (!currentGroup) currentGroup = keys[0];
-
+const renderPreview = () => {
     const gc = document.getElementById('groupContainer');
+    const grid = document.getElementById('channelGrid');
+    if (!channels.length || !gc || !grid) return;
+
+    let groups = [];
+    channels.forEach(c => {
+        if (c.group && !groups.includes(c.group)) {
+            groups.push(c.group);
+        }
+    });
+    
+    if (!currentGroup && groups.length > 0) {
+        currentGroup = groups[0];
+    }
+    
+    const displayGroups = [...groups, '全部'];
+
     gc.innerHTML = '';
-    keys.forEach(g => {
+    displayGroups.forEach(g => {
         const btn = document.createElement('button');
-        btn.className = `group-tag px-4 py-2 text-xs font-bold whitespace-nowrap rounded-lg transition-all border ${currentGroup === g ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-400 border-slate-200'}`;
+        btn.className = `group-tag ${currentGroup === g ? 'active' : ''}`;
         btn.textContent = g;
-        btn.onclick = () => { currentGroup = g; renderPreview(); };
+        btn.onclick = () => {
+            currentGroup = g;
+            renderPreview();
+        };
         gc.appendChild(btn);
     });
 
-    const grid = document.getElementById('channelGrid');
     grid.innerHTML = '';
     const filtered = currentGroup === '全部' ? channels : channels.filter(c => c.group === currentGroup);
+    
     filtered.forEach(ch => {
         const b = document.createElement('div');
-        b.className = 'channel-btn p-3 bg-white border border-slate-100 rounded-xl hover:border-indigo-400 hover:shadow-sm cursor-pointer transition-all flex items-center gap-3 overflow-hidden';
-        b.innerHTML = `<img src="${ch.logo || ''}" class="w-8 h-8 object-contain shrink-0" onerror="this.src='/static/logo.png'"><span class="text-[11px] font-bold truncate">${ch.name}</span>`;
-        b.onclick = () => play(ch);
+        b.className = 'channel-btn'; 
+        b.innerHTML = `
+            <img src="${ch.logo || '/static/logo.png'}" onerror="this.src='/static/logo.png'">
+            <span>${ch.name}</span>
+        `;
+        b.onclick = () => playStream(ch);
         grid.appendChild(b);
     });
-}
+};
 
-function play(ch) {
+const playStream = (ch) => {
     const container = document.getElementById('playerContainer');
-    // 销毁旧实例并完全清空容器
-    if (artPlayer) {
-        artPlayer.destroy(true); // 传入 true 表示完全销毁 DOM
-        artPlayer = null;
-    }
-    container.innerHTML = ''; 
+    if (art) art.destroy(true);
+    container.innerHTML = '';
 
-    artPlayer = new Artplayer({
+    art = new Artplayer({
         container: container,
         url: `/stream/${ch.id}/index.m3u8`,
         isLive: true,
         autoplay: true,
         theme: '#4f46e5',
         fullscreen: true,
-        fullscreenWeb: true,
+        playbackRate: true,
+        aspectRatio: true,
         setting: true,
         customType: {
-            m3u8: function(video, url, art) {
-                if (Hls.isSupported()) {
-                    if (art.hls) art.hls.destroy();
+            m3u8: function (video, url) {
+                if (window.Hls && Hls.isSupported()) {
                     const hls = new Hls();
                     hls.loadSource(url);
                     hls.attachMedia(video);
-                    art.hls = hls; // 将 hls 实例挂载到 art 上方便后续销毁
-                    art.on('destroy', () => hls.destroy());
                 } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                     video.src = url;
                 }
-            }
-        }
+            },
+        },
     });
-}
-
-function switchTab(t) {
-    const isC = t === 'console';
-    document.getElementById('consolePage').classList.toggle('hidden', !isC);
-    document.getElementById('previewPage').classList.toggle('hidden', isC);
-    document.getElementById('tabConsole').className = isC ? 'font-bold py-2 active-tab text-sm' : 'font-bold py-2 text-slate-400 text-sm';
-    document.getElementById('tabPreview').className = !isC ? 'font-bold py-2 active-tab text-sm' : 'font-bold py-2 text-slate-400 text-sm';
-}
-
-document.getElementById('tabConsole').onclick = () => switchTab('console');
-document.getElementById('tabPreview').onclick = () => switchTab('preview');
-
-document.getElementById('copyBtn').onclick = () => {
-    const val = document.getElementById('m3uUrl').value;
-    if (!val || val.includes("等待")) return;
-    const btn = document.getElementById('copyBtn');
-    const success = () => {
-        btn.textContent = '已复制';
-        setTimeout(() => btn.textContent = '复制', 2000);
-    };
-    if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(val).then(success);
-    } else {
-        const textArea = document.createElement("textarea");
-        textArea.value = val;
-        textArea.style.position = "fixed";
-        textArea.style.left = "-9999px";
-        textArea.style.top = "0";
-        document.body.appendChild(textArea);
-        textArea.focus();
-        textArea.select();
-        try { document.execCommand('copy'); success(); } catch (err) { console.error('Fallback copy failed', err); }
-        document.body.removeChild(textArea);
-    }
 };
+
+async function loadListFromServer() {
+    try {
+        const res = await fetch('/api/list?t=' + Date.now());
+        const data = await res.json();
+        channels = Array.isArray(data) ? data : (data.channels || []);
+        
+        if (document.getElementById('channelCount')) {
+            document.getElementById('channelCount').textContent = channels.length;
+        }
+
+        if (channels.length) {
+            document.getElementById('m3uUrl').value = `${window.location.origin}/playlist/tstohls.m3u`;
+            renderPreview();
+        }
+    } catch (e) {
+        console.error("加载列表失败", e);
+    }
+}
 
 async function checkStatus() {
     try {
         const r = await fetch('/api/status?t=' + Date.now());
-        if (r.ok) {
-            const d = await r.json();
-            document.getElementById('processCount').textContent = d.active_count;
-        }
+        const d = await r.json();
+        if(document.getElementById('processCount')) document.getElementById('processCount').textContent = d.active_count;
+        if(document.getElementById('cpuUsage')) document.getElementById('cpuUsage').textContent = d.cpu || '0';
+        if(document.getElementById('memUsage')) document.getElementById('memUsage').textContent = d.mem || '0';
     } catch(e) {}
 }
 
-window.onload = () => { init(); checkStatus(); setInterval(checkStatus, 3000); };
+async function loadConfigFromServer() {
+    try {
+        const res = await fetch('/api/config');
+        const config = await res.json();
+        const form = document.getElementById('configForm');
+        
+        Object.keys(config).forEach(key => {
+            const el = form.querySelector(`[name="${key}"]`);
+            if (el) {
+                const val = String(config[key]);
+                if (!Array.from(el.options).some(o => o.value === val)) {
+                    el.add(new Option(val, val));
+                }
+                el.value = val;
+            }
+        });
+    } catch (e) {}
+}
+
+document.getElementById('expertModeBtn').onclick = () => {
+    isExpertMode = !isExpertMode;
+    const inputs = document.querySelectorAll('#configForm select');
+    inputs.forEach(i => i.disabled = !isExpertMode);
+    
+    document.getElementById('configActions').classList.toggle('hidden', !isExpertMode);
+    document.getElementById('expertModeBtn').textContent = isExpertMode ? "取消修改" : "编辑配置";
+};
+
+document.getElementById('saveConfigBtn').onclick = async () => {
+    const fd = new FormData(document.getElementById('configForm'));
+    const data = Object.fromEntries(fd.entries());
+    const numKeys = ['max_processes', 'hls_time', 'hls_list_size', 'idle_timeout', 'reconnect_delay'];
+    numKeys.forEach(k => { if(data[k]) data[k] = parseInt(data[k]); });
+
+    try {
+        const res = await fetch('/api/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        if(res.ok) {
+            alert("配置已更新，服务将重启应用新参数");
+            location.reload();
+        }
+    } catch (e) {
+        alert("保存失败");
+    }
+};
+
+document.getElementById('resetConfigBtn').onclick = async () => {
+    if(confirm("确定要恢复到出厂默认设置吗？")) {
+        await fetch('/api/config?action=reset', { method: 'POST' });
+        location.reload();
+    }
+};
+
+function setupDragAndDrop() {
+    const zone = document.getElementById('dropZone');
+    const input = document.getElementById('fileInput');
+    const uploadBtn = document.getElementById('uploadBtn');
+    
+    if(!zone || !input) return;
+
+    // 修复 Bug: 阻止浏览器默认打开文件的行为
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        zone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+        }, false);
+    });
+
+    zone.onclick = () => input.click();
+
+    // 拖拽进入样式变化
+    zone.addEventListener('dragover', () => zone.classList.add('bg-indigo-50'), false);
+    zone.addEventListener('dragleave', () => zone.classList.remove('bg-indigo-50'), false);
+
+    // 核心修复: 处理拖拽放下的文件
+    zone.addEventListener('drop', (e) => {
+        zone.classList.remove('bg-indigo-50');
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        if (files.length > 0) {
+            input.files = files; // 将拖拽的文件赋值给 input
+            handleFileSelect(files[0]);
+        }
+    }, false);
+
+    input.onchange = () => {
+        if(input.files[0]) {
+            handleFileSelect(input.files[0]);
+        }
+    };
+
+    function handleFileSelect(file) {
+        document.getElementById('dropZoneContent').innerHTML = `
+            <i data-lucide="check-circle" class="w-10 h-10 text-emerald-500 mx-auto mb-4"></i>
+            <p class="text-xs font-bold text-indigo-600">已选择: ${file.name}</p>
+        `;
+        if(window.lucide) lucide.createIcons();
+    }
+
+    uploadBtn.onclick = async () => {
+        if(!input.files[0]) {
+            alert("请先选择 M3U 文件");
+            return;
+        }
+        
+        uploadBtn.disabled = true;
+        uploadBtn.textContent = "正在处理...";
+        
+        const fd = new FormData();
+        fd.append('m3uFile', input.files[0]);
+
+        try {
+            const res = await fetch('/api/upload', { method: 'POST', body: fd });
+            if(res.ok) {
+                location.reload();
+            } else {
+                alert("上传失败，请检查文件格式");
+            }
+        } catch (e) {
+            alert("请求出错");
+        } finally {
+            uploadBtn.disabled = false;
+            uploadBtn.textContent = "上传并转换";
+        }
+    };
+}
+
+document.getElementById('copyBtn').onclick = () => {
+    const url = document.getElementById('m3uUrl').value;
+    navigator.clipboard.writeText(url).then(() => {
+        const btn = document.getElementById('copyBtn');
+        const oldText = btn.textContent;
+        btn.textContent = "已复制";
+        btn.classList.replace('bg-slate-900', 'bg-emerald-600');
+        setTimeout(() => {
+            btn.textContent = oldText;
+            btn.classList.replace('bg-emerald-600', 'bg-slate-900');
+        }, 2000);
+    });
+};
+
+window.onload = init;
