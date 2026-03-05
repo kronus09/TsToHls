@@ -18,9 +18,35 @@ const init = () => {
     setupDragAndDrop();
     loadListFromServer();
     loadConfigFromServer();
+    checkSourceFile();
     // 每3秒更新一次资源占用
     setInterval(checkStatus, 3000);
 };
+
+// 检查source.m3u文件是否存在，并提取订阅地址
+    const checkSourceFile = () => {
+        fetch('/api/check-source')
+            .then(response => response.json())
+            .then(data => {
+                if (data.exists) {
+                    // 文件存在，显示文件状态
+                    const dropZoneContent = document.getElementById('dropZoneContent');
+                    dropZoneContent.innerHTML = `
+                        <i data-lucide="file-check" class="w-10 h-10 text-green-500 mx-auto mb-4"></i>
+                        <p class="text-xs font-bold text-slate-600">上次上传的 m3u 文件</p>
+                    `;
+                    lucide.createIcons();
+                }
+                
+                // 显示订阅地址
+                if (data.sourceUrl) {
+                    document.getElementById('urlInput').value = data.sourceUrl;
+                }
+            })
+            .catch(error => {
+                console.error('检查source.m3u文件失败:', error);
+            });
+    };
 
 const setupTabs = () => {
     const btnC = document.getElementById('tabConsole');
@@ -290,23 +316,22 @@ function setupDragAndDrop() {
         const urlInput = document.getElementById('urlInput');
         const url = urlInput.value.trim();
         
-        if(!input.files[0] && !url) {
-            alert("请选择 M3U 文件或输入订阅地址");
-            return;
-        }
-        
         uploadBtn.disabled = true;
         uploadBtn.textContent = "正在处理...";
         
         try {
             let res;
             const checkSourceReliability = document.getElementById('checkSourceReliability').checked;
+            
+            // 检查是否有新选择的文件或输入的URL
             if(input.files[0]) {
+                // 有新选择的文件，直接上传
                 const fd = new FormData();
                 fd.append('m3uFile', input.files[0]);
                 fd.append('checkSourceReliability', checkSourceReliability);
                 res = await fetch('/api/upload', { method: 'POST', body: fd });
             } else if(url) {
+                // 有输入的URL，直接上传
                 res = await fetch('/api/upload', {
                     method: 'POST',
                     headers: {
@@ -314,6 +339,39 @@ function setupDragAndDrop() {
                     },
                     body: JSON.stringify({ url: url, checkSourceReliability: checkSourceReliability })
                 });
+            } else {
+                // 没有新选择的文件或输入的URL，检查source.m3u文件
+                const sourceCheck = await fetch('/api/check-source');
+                const sourceData = await sourceCheck.json();
+                
+                if(sourceData.exists) {
+                    if(sourceData.sourceUrl) {
+                        // 文件内有订阅地址，从订阅地址重新拉取
+                        res = await fetch('/api/upload', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ url: sourceData.sourceUrl, checkSourceReliability: checkSourceReliability })
+                        });
+                    } else {
+                        // 文件内没有订阅地址，直接使用该文件
+                        // 这里需要创建一个FormData对象，模拟文件上传
+                        // 但由于我们无法直接读取本地文件，需要通过后端API来处理
+                        res = await fetch('/api/reprocess', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ checkSourceReliability: checkSourceReliability })
+                        });
+                    }
+                } else {
+                    alert("请选择 M3U 文件或输入订阅地址");
+                    uploadBtn.disabled = false;
+                    uploadBtn.textContent = "上传并转换";
+                    return;
+                }
             }
             
             if(res.ok) {

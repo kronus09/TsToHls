@@ -57,6 +57,8 @@ func main() {
 	http.HandleFunc("/api/list", listHandler)
 	http.HandleFunc("/api/status", statusHandler)
 	http.HandleFunc("/api/config", configHandler)
+	http.HandleFunc("/api/check-source", checkSourceHandler)
+	http.HandleFunc("/api/reprocess", reprocessHandler)
 
 	// 5. 资源接口
 	http.HandleFunc("/playlist/tstohls.m3u", playlistHandler)
@@ -125,6 +127,7 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	checkSourceReliability := true
+	sourceUrl := ""
 
 	tmpPath := filepath.Join("m3u", "source.m3u")
 	out, err := os.Create(tmpPath)
@@ -164,6 +167,7 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "URL不能为空", 400)
 			return
 		}
+		sourceUrl = req.URL
 		checkSourceReliability = req.CheckSourceReliability
 		// 从URL下载文件
 		resp, err := http.Get(req.URL)
@@ -176,6 +180,13 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "下载文件失败", 500)
 			return
 		}
+
+		// 先写入订阅地址注释
+		if sourceUrl != "" {
+			fmt.Fprintf(out, "# TsToHls-Source-URL: %s\n", sourceUrl)
+		}
+
+		// 写入文件内容
 		io.Copy(out, resp.Body)
 	} else {
 		http.Error(w, "不支持的请求类型", 400)
@@ -184,6 +195,80 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	addr := "http://" + r.Host
 	channels, err := parser.ParseAndGenerate(tmpPath, addr, checkSourceReliability)
+	if err != nil {
+		http.Error(w, "解析失败", 500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	fmt.Fprintf(w, `{"status":"ok", "count": %d, "message": "解析完成"}`, len(channels))
+}
+
+// 检查source.m3u文件是否存在，并提取订阅地址
+func checkSourceHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+
+	sourcePath := filepath.Join("m3u", "source.m3u")
+
+	// 检查文件是否存在
+	exists := false
+	sourceUrl := ""
+
+	if _, err := os.Stat(sourcePath); err == nil {
+		exists = true
+
+		// 读取文件内容，提取订阅地址
+		content, err := os.ReadFile(sourcePath)
+		if err == nil {
+			lines := strings.Split(string(content), "\n")
+			for _, line := range lines {
+				if strings.HasPrefix(line, "# TsToHls-Source-URL:") {
+					sourceUrl = strings.TrimSpace(strings.TrimPrefix(line, "# TsToHls-Source-URL:"))
+					break
+				}
+			}
+		}
+	}
+
+	// 返回结果
+	result := struct {
+		Exists    bool   `json:"exists"`
+		SourceUrl string `json:"sourceUrl"`
+	}{
+		Exists:    exists,
+		SourceUrl: sourceUrl,
+	}
+
+	json.NewEncoder(w).Encode(result)
+}
+
+// 直接使用source.m3u文件进行转换
+func reprocessHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "仅支持 POST 请求", 405)
+		return
+	}
+
+	// 解析请求参数
+	var req struct {
+		CheckSourceReliability bool `json:"checkSourceReliability"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "无效的请求数据", 400)
+		return
+	}
+
+	tmpPath := filepath.Join("m3u", "source.m3u")
+
+	// 检查文件是否存在
+	if _, err := os.Stat(tmpPath); err != nil {
+		http.Error(w, "source.m3u文件不存在", 400)
+		return
+	}
+
+	addr := "http://" + r.Host
+	channels, err := parser.ParseAndGenerate(tmpPath, addr, req.CheckSourceReliability)
 	if err != nil {
 		http.Error(w, "解析失败", 500)
 		return
