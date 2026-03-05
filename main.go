@@ -123,13 +123,7 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "仅支持 POST 请求", 405)
 		return
 	}
-	// 修正点：将 header 改为 _，因为代码后续没用到这个变量
-	file, _, err := r.FormFile("m3uFile")
-	if err != nil {
-		http.Error(w, "文件上传失败", 400)
-		return
-	}
-	defer file.Close()
+
 	tmpPath := filepath.Join("m3u", "source.m3u")
 	out, err := os.Create(tmpPath)
 	if err != nil {
@@ -137,7 +131,47 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer out.Close()
-	io.Copy(out, file)
+
+	// 检查请求类型
+	contentType := r.Header.Get("Content-Type")
+	if strings.Contains(contentType, "multipart/form-data") {
+		// 处理文件上传
+		file, _, err := r.FormFile("m3uFile")
+		if err != nil {
+			http.Error(w, "文件上传失败", 400)
+			return
+		}
+		defer file.Close()
+		io.Copy(out, file)
+	} else if strings.Contains(contentType, "application/json") {
+		// 处理URL请求
+		var req struct {
+			URL string `json:"url"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "无效的请求数据", 400)
+			return
+		}
+		if req.URL == "" {
+			http.Error(w, "URL不能为空", 400)
+			return
+		}
+		// 从URL下载文件
+		resp, err := http.Get(req.URL)
+		if err != nil {
+			http.Error(w, "下载文件失败", 500)
+			return
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			http.Error(w, "下载文件失败", 500)
+			return
+		}
+		io.Copy(out, resp.Body)
+	} else {
+		http.Error(w, "不支持的请求类型", 400)
+		return
+	}
 
 	addr := "http://" + r.Host
 	channels, err := parser.ParseAndGenerate(tmpPath, addr)

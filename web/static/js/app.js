@@ -251,23 +251,37 @@ function setupDragAndDrop() {
     }
 
     uploadBtn.onclick = async () => {
-        if(!input.files[0]) {
-            alert("请先选择 M3U 文件");
+        const urlInput = document.getElementById('urlInput');
+        const url = urlInput.value.trim();
+        
+        if(!input.files[0] && !url) {
+            alert("请选择 M3U 文件或输入订阅地址");
             return;
         }
         
         uploadBtn.disabled = true;
         uploadBtn.textContent = "正在处理...";
         
-        const fd = new FormData();
-        fd.append('m3uFile', input.files[0]);
-
         try {
-            const res = await fetch('/api/upload', { method: 'POST', body: fd });
+            let res;
+            if(input.files[0]) {
+                const fd = new FormData();
+                fd.append('m3uFile', input.files[0]);
+                res = await fetch('/api/upload', { method: 'POST', body: fd });
+            } else if(url) {
+                res = await fetch('/api/upload', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ url: url })
+                });
+            }
+            
             if(res.ok) {
                 location.reload();
             } else {
-                alert("上传失败，请检查文件格式");
+                alert("处理失败，请检查文件格式或URL是否正确");
             }
         } catch (e) {
             alert("请求出错");
