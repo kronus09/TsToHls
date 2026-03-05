@@ -124,6 +124,8 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	checkSourceReliability := true
+
 	tmpPath := filepath.Join("m3u", "source.m3u")
 	out, err := os.Create(tmpPath)
 	if err != nil {
@@ -143,10 +145,16 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		defer file.Close()
 		io.Copy(out, file)
+		// 处理checkSourceReliability参数
+		checkSourceReliabilityStr := r.FormValue("checkSourceReliability")
+		if checkSourceReliabilityStr == "false" {
+			checkSourceReliability = false
+		}
 	} else if strings.Contains(contentType, "application/json") {
 		// 处理URL请求
 		var req struct {
-			URL string `json:"url"`
+			URL                    string `json:"url"`
+			CheckSourceReliability bool   `json:"checkSourceReliability"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "无效的请求数据", 400)
@@ -156,6 +164,7 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "URL不能为空", 400)
 			return
 		}
+		checkSourceReliability = req.CheckSourceReliability
 		// 从URL下载文件
 		resp, err := http.Get(req.URL)
 		if err != nil {
@@ -174,7 +183,7 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	addr := "http://" + r.Host
-	channels, err := parser.ParseAndGenerate(tmpPath, addr)
+	channels, err := parser.ParseAndGenerate(tmpPath, addr, checkSourceReliability)
 	if err != nil {
 		http.Error(w, "解析失败", 500)
 		return

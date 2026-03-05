@@ -13,16 +13,17 @@ import (
 
 // FFmpegConfig 定义了可调节的性能和转换参数
 type FFmpegConfig struct {
-	MaxProcesses   int    `json:"max_processes"`
-	HlsTime        int    `json:"hls_time"`      // 修改为 int
-	HlsListSize    int    `json:"hls_list_size"` // 修改为 int
-	IdleTimeout    int    `json:"idle_timeout"`  // 单位：秒
-	VideoCodec     string `json:"video_codec"`
-	AudioCodec     string `json:"audio_codec"`
-	AudioBitrate   string `json:"audio_bitrate"`
-	ReconnectDelay int    `json:"reconnect_delay"` // 修改为 int
-	HlsFlags       string `json:"hls_flags"`
-	HlsSegmentType string `json:"hls_segment_type"`
+	MaxProcesses           int    `json:"max_processes"`
+	HlsTime                int    `json:"hls_time"`      // 修改为 int
+	HlsListSize            int    `json:"hls_list_size"` // 修改为 int
+	IdleTimeout            int    `json:"idle_timeout"`  // 单位：秒
+	VideoCodec             string `json:"video_codec"`
+	AudioCodec             string `json:"audio_codec"`
+	AudioBitrate           string `json:"audio_bitrate"`
+	ReconnectDelay         int    `json:"reconnect_delay"` // 修改为 int
+	HlsFlags               string `json:"hls_flags"`
+	HlsSegmentType         string `json:"hls_segment_type"`
+	CheckSourceReliability bool   `json:"check_source_reliability"`
 }
 
 type ProcessInfo struct {
@@ -57,16 +58,17 @@ func NewProcessManager() *ProcessManager {
 // LoadConfig 从 JSON 加载配置，如果失败则使用默认值并保存
 func (pm *ProcessManager) LoadConfig() {
 	defaultCfg := FFmpegConfig{
-		MaxProcesses:   6,
-		HlsTime:        2, // 默认值改为数字
-		HlsListSize:    6, // 默认值改为数字
-		IdleTimeout:    120,
-		VideoCodec:     "copy",
-		AudioCodec:     "aac",
-		AudioBitrate:   "128k",
-		ReconnectDelay: 5, // 默认值改为数字
-		HlsFlags:       "delete_segments+discont_start+independent_segments",
-		HlsSegmentType: "mpegts",
+		MaxProcesses:           6,
+		HlsTime:                2, // 默认值改为数字
+		HlsListSize:            6, // 默认值改为数字
+		IdleTimeout:            120,
+		VideoCodec:             "copy",
+		AudioCodec:             "aac",
+		AudioBitrate:           "128k",
+		ReconnectDelay:         5, // 默认值改为数字
+		HlsFlags:               "delete_segments+discont_start+independent_segments",
+		HlsSegmentType:         "mpegts",
+		CheckSourceReliability: true,
 	}
 
 	data, err := os.ReadFile(pm.ConfigPath)

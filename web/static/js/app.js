@@ -95,28 +95,64 @@ const playStream = (ch) => {
     if (art) art.destroy(true);
     container.innerHTML = '';
 
-    art = new Artplayer({
-        container: container,
-        url: `/stream/${ch.id}/index.m3u8`,
-        isLive: true,
-        autoplay: true,
-        theme: '#4f46e5',
-        fullscreen: true,
-        playbackRate: true,
-        aspectRatio: true,
-        setting: true,
-        customType: {
-            m3u8: function (video, url) {
-                if (window.Hls && Hls.isSupported()) {
-                    const hls = new Hls();
-                    hls.loadSource(url);
-                    hls.attachMedia(video);
-                } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                    video.src = url;
+    // 从tstohls.m3u文件中获取播放链接
+    fetch('/playlist/tstohls.m3u')
+        .then(response => response.text())
+        .then(content => {
+            // 查找包含当前频道ID的播放链接
+            const lines = content.split('\n');
+            let streamUrl = '';
+            for (let i = 0; i < lines.length; i++) {
+                if (lines[i].includes(ch.id)) {
+                    // 找到频道对应的播放链接
+                    streamUrl = lines[i].trim();
+                    break;
                 }
-            },
-        },
-    });
+            }
+            
+            console.log('播放URL:', streamUrl);
+            
+            art = new Artplayer({
+                container: container,
+                url: streamUrl,
+                isLive: true,
+                autoplay: true,
+                theme: '#4f46e5',
+                fullscreen: true,
+                playbackRate: true,
+                aspectRatio: true,
+                setting: true,
+                customType: {
+                    m3u8: function (video, url) {
+                        if (window.Hls && Hls.isSupported()) {
+                            const hls = new Hls({
+                                xhrSetup: function(xhr, url) {
+                                    xhr.withCredentials = true;
+                                },
+                                enableWorker: false,
+                                lowLatencyMode: true,
+                                fastStart: true,
+                                maxBufferLength: 1,
+                                maxMaxBufferLength: 3,
+                                maxBufferHole: 0.5,
+                                nudgeMaxRetry: 3,
+                                nudgeRetryDelay: 100,
+                                nudgeMaxDelay: 1000
+                            });
+                            hls.loadSource(url);
+                            hls.attachMedia(video);
+                        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                            video.src = url;
+                            video.crossOrigin = 'use-credentials';
+                        }
+                    },
+                },
+            });
+        })
+        .catch(error => {
+            console.error('获取播放链接失败:', error);
+            container.innerHTML = '<p class="text-red-500 text-center">获取播放链接失败，请重试</p>';
+        });
 };
 
 async function loadListFromServer() {
@@ -264,9 +300,11 @@ function setupDragAndDrop() {
         
         try {
             let res;
+            const checkSourceReliability = document.getElementById('checkSourceReliability').checked;
             if(input.files[0]) {
                 const fd = new FormData();
                 fd.append('m3uFile', input.files[0]);
+                fd.append('checkSourceReliability', checkSourceReliability);
                 res = await fetch('/api/upload', { method: 'POST', body: fd });
             } else if(url) {
                 res = await fetch('/api/upload', {
@@ -274,7 +312,7 @@ function setupDragAndDrop() {
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ url: url })
+                    body: JSON.stringify({ url: url, checkSourceReliability: checkSourceReliability })
                 });
             }
             

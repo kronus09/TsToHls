@@ -100,7 +100,7 @@ func ValidateStream(url string) bool {
 	return false
 }
 
-func ParseAndGenerate(inputPath, serverAddr string) ([]Channel, error) {
+func ParseAndGenerate(inputPath, serverAddr string, checkReliability bool) ([]Channel, error) {
 	outputDir := "m3u"
 	os.MkdirAll(outputDir, 0755)
 
@@ -178,11 +178,15 @@ func ParseAndGenerate(inputPath, serverAddr string) ([]Channel, error) {
 		go func(c Channel) {
 			defer wg.Done()
 			limit <- struct{}{}
-			if ValidateStream(c.Url) {
+			if !checkReliability || ValidateStream(c.Url) {
 				mu.Lock()
 				validChannels = append(validChannels, c)
 				mu.Unlock()
-				fmt.Printf("✅ 验证通过: %s\n", c.Name)
+				if checkReliability {
+					fmt.Printf("✅ 验证通过: %s\n", c.Name)
+				} else {
+					fmt.Printf("✅ 跳过验证: %s\n", c.Name)
+				}
 			}
 			<-limit
 		}(ch)
