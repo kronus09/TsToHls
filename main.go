@@ -43,7 +43,11 @@ func main() {
 	logoFS := http.FileServer(http.Dir(filepath.Join("m3u", "logos")))
 	http.Handle("/logos/", http.StripPrefix("/logos/", logoFS))
 
-	// 3. 前端首页
+	// 3. M3U文件路由 (映射 m3u 文件夹，用于 Direct TS 播放)
+	m3uFS := http.FileServer(http.Dir(filepath.Join("m3u")))
+	http.Handle("/m3u/", http.StripPrefix("/m3u/", m3uFS))
+
+	// 4. 前端首页
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" {
 			http.ServeFile(w, r, filepath.Join("web", "index.html"))
@@ -63,6 +67,7 @@ func main() {
 	// 5. 资源接口
 	http.HandleFunc("/playlist/tstohls.m3u", playlistHandler)
 	http.HandleFunc("/stream/", streamHandler)
+	http.HandleFunc("/proxy/", proxyHandler)
 
 	fmt.Println("-------------------------------------------")
 	fmt.Printf("🚀 TsToHls v1.2.2 服务已启动\n")
@@ -316,6 +321,70 @@ func streamHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		tsPath := filepath.Join(TempDir, id, file)
 		http.ServeFile(w, r, tsPath)
+	}
+}
+
+func proxyHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	p := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(p) < 2 {
+		http.Error(w, "无效的代理请求", 400)
+		return
+	}
+
+	targetURL := strings.Join(p[1:], "/")
+	targetURL = strings.ReplaceAll(targetURL, "%2F", "/")
+	targetURL = strings.ReplaceAll(targetURL, "%3A", ":")
+
+	if !strings.HasPrefix(targetURL, "http://") && !strings.HasPrefix(targetURL, "https://") {
+		targetURL = "http://" + targetURL
+	}
+
+	client := &http.Client{}
+	req, err := http.NewRequest(r.Method, targetURL, r.Body)
+	if err != nil {
+		http.Error(w, "请求创建失败: "+err.Error(), 500)
+		return
+	}
+
+	for key, values := range r.Header {
+		if key != "Host" && key != "Origin" {
+			for _, value := range values {
+				req.Header.Add(key, value)
+			}
+		}
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		http.Error(w, "代理请求失败: "+err.Error(), 500)
+		return
+	}
+	defer resp.Body.Close()
+
+	for key, values := range resp.Header {
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
+	}
+
+	w.WriteHeader(resp.StatusCode)
+	_, err = io.Copy(w, resp.Body)
+	if err != nil {
+		// 忽略客户端关闭连接的错误
+		if strings.Contains(err.Error(), "connection was aborted") || strings.Contains(err.Error(), "broken pipe") {
+			// 客户端可能已经关闭了连接（例如用户切换了频道）
+			return
+		}
+		log.Printf("代理响应拷贝失败: %v", err)
 	}
 }
 

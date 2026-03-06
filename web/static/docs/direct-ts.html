@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TsToHls 直播预览 | Direct TS</title>
+    <link rel="icon" type="image/png" href="/static/logo.png">
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="/static/js/lucide.min.js"></script>
+    <script src="/static/js/artplayer.js"></script>
+    <script src="/static/js/mpegts.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, sans-serif; background-color: #f8fafc; min-height: 100vh; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 1.5rem; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+        .header-left { display: flex; align-items: center; gap: 0.75rem; flex: 1; }
+        .header-center { display: flex; flex-direction: column; justify-content: center; margin-left: 2rem; padding-left: 2rem; border-left: 1px solid #e2e8f0; }
+        .header-center-title { font-size: 0.875rem; font-weight: 700; color: #4f46e5; margin-bottom: 0.25rem; }
+        .header-center-desc { font-size: 0.75rem; font-weight: 500; color: #64748b; line-height: 1.4; }
+        .logo { width: 2.5rem; height: 2.5rem; background: #4f46e5; border-radius: 0.75rem; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.3); }
+        .logo img { width: 1.5rem; height: 1.5rem; object-fit: contain; }
+        .title { font-size: 1.25rem; font-weight: 800; color: #1e293b; }
+        .title span { color: #4f46e5; font-size: 0.875rem; font-family: monospace; margin-left: 0.25rem; }
+        .back-link { display: inline-flex; align-items: center; gap: 0.5rem; background: #f1f5f9; color: #475569; padding: 0.5rem 1rem; border-radius: 0.5rem; font-weight: 600; text-decoration: none; font-size: 0.875rem; transition: all 0.2s; }
+        .back-link:hover { background: #e2e8f0; color: #1e293b; }
+        .player-wrapper { width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 1rem; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); margin-bottom: 1rem; position: relative; }
+        .player-wrapper.fullscreen-page { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; aspect-ratio: auto; z-index: 9999; border-radius: 0; }
+        .player-container { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-weight: 600; position: relative; }
+        .video-wrapper { width: 100%; height: 100%; position: relative; cursor: pointer; }
+        .video-wrapper video { width: 100%; height: 100%; object-fit: contain; }
+        .pause-indicator { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 5rem; height: 5rem; background: rgba(0,0,0,0.6); border-radius: 50%; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+        .pause-indicator.show { opacity: 1; }
+        .pause-indicator svg { width: 2rem; height: 2rem; color: white; }
+        .custom-controls { position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(to top, rgba(0,0,0,0.8), transparent); padding: 1rem; display: flex; align-items: center; gap: 1rem; opacity: 0; transition: opacity 0.3s; }
+        .player-wrapper:hover .custom-controls { opacity: 1; }
+        .custom-controls.show { opacity: 1; }
+        .control-btn { background: rgba(255,255,255,0.2); border: none; color: white; width: 2.5rem; height: 2.5rem; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+        .control-btn:hover { background: rgba(255,255,255,0.3); transform: scale(1.1); }
+        .control-btn svg { width: 1.25rem; height: 1.25rem; }
+        .volume-slider { width: 5rem; height: 0.25rem; -webkit-appearance: none; appearance: none; background: rgba(255,255,255,0.3); border-radius: 0.125rem; cursor: pointer; }
+        .volume-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 0.75rem; height: 0.75rem; background: white; border-radius: 50%; cursor: pointer; }
+        .control-spacer { flex: 1; }
+        .channel-section { background: white; border-radius: 1rem; padding: 1rem; border: 1px solid #e2e8f0; }
+        .section-title { font-size: 0.875rem; font-weight: 700; color: #475569; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem; }
+        .group-tags { display: flex; gap: 0.5rem; overflow-x: auto; padding-bottom: 0.5rem; margin-bottom: 1rem; }
+        .group-tag { padding: 0.375rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; white-space: nowrap; cursor: pointer; transition: all 0.2s; background: #f1f5f9; color: #64748b; border: none; display: inline-flex; align-items: center; gap: 0.375rem; }
+        .group-tag:hover { background: #e2e8f0; }
+        .group-tag.active { background: #4f46e5; color: white; }
+        .group-tag.active .group-count { background: rgba(255,255,255,0.2); color: white; }
+        .group-count { font-size: 0.625rem; font-weight: 700; padding: 0.125rem 0.375rem; background: #cbd5e1; color: #475569; border-radius: 9999px; min-width: 1.25rem; text-align: center; }
+        .channel-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; }
+        @media (min-width: 640px) { .channel-grid { grid-template-columns: repeat(5, 1fr); } }
+        @media (min-width: 768px) { .channel-grid { grid-template-columns: repeat(6, 1fr); } }
+        @media (min-width: 1024px) { .channel-grid { grid-template-columns: repeat(8, 1fr); } }
+        @media (min-width: 1280px) { .channel-grid { grid-template-columns: repeat(10, 1fr); } }
+        .no-data { text-align: center; padding: 2rem; color: #94a3b8; }
+        .channel-btn { transition: all 0.2s !important; border: 1px solid #f1f5f9 !important; background-color: #f1f5f9 !important; display: flex !important; flex-direction: column !important; align-items: center !important; justify-content: center !important; gap: 0.25rem !important; padding: 0.5rem 0.4rem !important; border-radius: 0.85rem !important; cursor: pointer !important; height: auto !important; }
+        .channel-btn:hover { border-color: #4f46e5 !important; background-color: #ede9fe !important; transform: translateY(-1px); }
+        .channel-btn img { width: 1.75rem !important; height: 1.75rem !important; object-fit: contain !important; flex-shrink: 0; }
+        .channel-btn span { font-size: 0.65rem !important; font-weight: 800 !important; color: #475569 !important; text-align: center; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-left">
+                <div class="logo"><img src="/static/logo.png" alt="Logo"></div>
+                <h1 class="title">TsToHls <span>1.3.0</span></h1>
+                <div class="header-center">
+                    <div class="header-center-title">Direct TS</div>
+                    <div class="header-center-desc">直接播放 source.m3u 中的 TS 流，无需转换为 HLS 格式，更低的延迟，更快的启动速度。</div>
+                </div>
+            </div>
+            <a href="/" class="back-link">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"></path><path d="M19 12H5"></path></svg>
+                返回管理界面
+            </a>
+        </div>
+
+        <div class="player-wrapper">
+            <div id="playerContainer" class="player-container">请选择频道开始播放</div>
+        </div>
+
+        <div class="channel-section">
+            <div id="groupContainer" class="group-tags"></div>
+            <div id="channelGrid" class="channel-grid"></div>
+            <div id="noDataMsg" class="no-data" style="display: none;">暂无频道数据，请先在数据导入页面导入 M3U 文件</div>
+        </div>
+    </div>
+
+    <script>
+        let channels = [];
+        let currentGroup = '';
+        let art = null;
+        let msePlayer = null;
+
+        const init = () => {
+            lucide.createIcons();
+            loadSourceChannels();
+        };
+
+        const loadSourceChannels = () => {
+            fetch('/m3u/source.m3u')
+                .then(response => response.text())
+                .then(content => {
+                    const lines = content.split('\n');
+                    channels = [];
+                    let currentChannel = null;
+
+                    for (let i = 0; i < lines.length; i++) {
+                        const line = lines[i].trim();
+                        
+                        if (line.startsWith('#EXTINF:')) {
+                            const info = line.replace('#EXTINF:', '');
+                            const parts = info.split(',');
+                            currentChannel = {
+                                name: parts[1] ? parts[1].trim() : 'Unknown',
+                                logo: '',
+                                group: '未分组',
+                                url: ''
+                            };
+                            
+                            const groupMatch = line.match(/group-title="([^"]*)"/);
+                            if (groupMatch && groupMatch[1]) {
+                                currentChannel.group = groupMatch[1];
+                            }
+                            
+                            const logoMatch = line.match(/tvg-logo="([^"]*)"/);
+                            if (logoMatch && logoMatch[1]) {
+                                currentChannel.logo = logoMatch[1];
+                            }
+                        } else if (line && !line.startsWith('#') && currentChannel) {
+                            currentChannel.url = line;
+                            currentChannel.id = 'ch' + (channels.length + 1);
+                            channels.push(currentChannel);
+                            currentChannel = null;
+                        }
+                    }
+
+                    renderChannels();
+                })
+                .catch(error => {
+                    console.error('加载source.m3u失败:', error);
+                    document.getElementById('noDataMsg').style.display = 'block';
+                });
+        };
+
+        const renderChannels = () => {
+            const groupContainer = document.getElementById('groupContainer');
+            const channelGrid = document.getElementById('channelGrid');
+            const noDataMsg = document.getElementById('noDataMsg');
+
+            if (!channels.length) {
+                noDataMsg.style.display = 'block';
+                return;
+            }
+
+            noDataMsg.style.display = 'none';
+
+            let groups = [];
+            channels.forEach(c => {
+                if (c.group && !groups.includes(c.group)) {
+                    groups.push(c.group);
+                }
+            });
+
+            if (!currentGroup && groups.length > 0) {
+                currentGroup = groups[0];
+            }
+
+            const displayGroups = [...groups, '全部'];
+
+            groupContainer.innerHTML = '';
+            displayGroups.forEach(g => {
+                const btn = document.createElement('button');
+                btn.className = 'group-tag ' + (currentGroup === g ? 'active' : '');
+                const count = g === '全部' ? channels.length : channels.filter(c => c.group === g).length;
+                btn.innerHTML = `${g}<span class="group-count">${count}</span>`;
+                btn.onclick = () => {
+                    currentGroup = g;
+                    renderChannels();
+                };
+                groupContainer.appendChild(btn);
+            });
+
+            channelGrid.innerHTML = '';
+            const filtered = currentGroup === '全部' ? channels : channels.filter(c => c.group === currentGroup);
+
+            filtered.forEach(ch => {
+                const b = document.createElement('div');
+                b.className = 'channel-btn';
+                b.innerHTML = `
+                    <img src="${ch.logo || '/static/logo.png'}" onerror="this.src='/static/logo.png'">
+                    <span>${ch.name}</span>
+                `;
+                b.onclick = () => playStream(ch);
+                channelGrid.appendChild(b);
+            });
+        };
+
+        const playStream = (ch) => {
+            const container = document.getElementById('playerContainer');
+            
+            if (art) {
+                art.destroy(true);
+                art = null;
+            }
+            
+            if (msePlayer) {
+                msePlayer.destroy();
+                msePlayer = null;
+            }
+
+            container.innerHTML = '';
+
+            if (!ch.url) {
+                container.innerHTML = '<p class="text-red-500">无效的播放地址</p>';
+                return;
+            }
+
+            console.log('播放URL:', ch.url);
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'video-wrapper';
+            container.appendChild(wrapper);
+
+            const videoElement = document.createElement('video');
+            videoElement.autoplay = true;
+            wrapper.appendChild(videoElement);
+
+            // 创建暂停指示器（中央显示两竖图标）
+            const pauseIndicator = document.createElement('div');
+            pauseIndicator.className = 'pause-indicator';
+            pauseIndicator.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
+            wrapper.appendChild(pauseIndicator);
+
+            // 点击视频切换播放/暂停
+            wrapper.addEventListener('click', (e) => {
+                // 如果点击的是控制条，不处理
+                if (e.target.closest('.custom-controls')) return;
+                
+                if (videoElement.paused) {
+                    videoElement.play();
+                } else {
+                    videoElement.pause();
+                }
+            });
+
+            videoElement.addEventListener('play', () => {
+                pauseIndicator.classList.remove('show');
+            });
+
+            videoElement.addEventListener('pause', () => {
+                pauseIndicator.classList.add('show');
+            });
+
+            // 创建自定义控制条
+            const controls = document.createElement('div');
+            controls.className = 'custom-controls show';
+            controls.innerHTML = `
+                <button class="control-btn" id="playPauseBtn" title="播放/暂停">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                </button>
+                <input type="range" class="volume-slider" id="volumeSlider" min="0" max="100" value="100" title="音量">
+                <div class="control-spacer"></div>
+                <button class="control-btn" id="fullscreenPageBtn" title="页面全屏">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                </button>
+                <button class="control-btn" id="fullscreenBtn" title="全屏">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                </button>
+            `;
+            wrapper.appendChild(controls);
+
+            // 播放/暂停按钮功能
+            const playPauseBtn = controls.querySelector('#playPauseBtn');
+            const playIcon = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+            const pauseIcon = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
+            
+            playPauseBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (videoElement.paused) {
+                    videoElement.play();
+                    playPauseBtn.innerHTML = pauseIcon;
+                } else {
+                    videoElement.pause();
+                    playPauseBtn.innerHTML = playIcon;
+                }
+            });
+
+            videoElement.addEventListener('play', () => {
+                playPauseBtn.innerHTML = pauseIcon;
+            });
+
+            videoElement.addEventListener('pause', () => {
+                playPauseBtn.innerHTML = playIcon;
+            });
+
+            // 音量控制
+            const volumeSlider = controls.querySelector('#volumeSlider');
+            volumeSlider.addEventListener('input', (e) => {
+                e.stopPropagation();
+                videoElement.volume = e.target.value / 100;
+            });
+
+            // 页面全屏功能
+            const playerWrapper = document.querySelector('.player-wrapper');
+            const fullscreenPageBtn = controls.querySelector('#fullscreenPageBtn');
+            fullscreenPageBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                playerWrapper.classList.toggle('fullscreen-page');
+                const isFullscreen = playerWrapper.classList.contains('fullscreen-page');
+                fullscreenPageBtn.innerHTML = isFullscreen 
+                    ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>'
+                    : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>';
+            });
+
+            // 全屏功能
+            const fullscreenBtn = controls.querySelector('#fullscreenBtn');
+            fullscreenBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (!document.fullscreenElement) {
+                    playerWrapper.requestFullscreen().catch(err => {
+                        console.error('全屏失败:', err);
+                    });
+                } else {
+                    document.exitFullscreen();
+                }
+            });
+
+            if (window.mpegts && mpegts.isSupported()) {
+                // 使用代理来解决 CORS 跨域问题
+                const proxyUrl = '/proxy/' + encodeURIComponent(ch.url);
+                msePlayer = mpegts.createPlayer({
+                    type: 'mse',
+                    url: proxyUrl,
+                    isLive: true
+                });
+
+                msePlayer.attachMediaElement(videoElement);
+                msePlayer.load();
+                msePlayer.play();
+
+                msePlayer.on(mpegts.Events.ERROR, (errorType, errorDetail) => {
+                    console.error('MPEGTS Error:', errorType, errorDetail);
+                    container.innerHTML = '<p class="text-red-500">播放失败，请尝试其他播放方式</p>';
+                });
+            } else {
+                container.innerHTML = '<p class="text-red-500">您的浏览器不支持 MSE，无法播放 TS 流</p>';
+            }
+        };
+
+        window.onload = init;
+    </script>
+    <footer style="margin-top: 2rem; padding-top: 1.5rem; padding-bottom: 2rem; border-top: 1px solid #e2e8f0; text-align: center;">
+        <a href="https://github.com/kronus09/TsToHls" target="_blank" style="display: inline-flex; align-items: center; gap: 0.5rem; text-decoration: none;">
+            <p style="font-size: 10px; font-weight: 900; color: #cbd5e1; text-transform: uppercase; letter-spacing: 0.2em; margin: 0;">Designed by <span style="color: #94a3b8;">KRONUS09</span></p>
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
+        </a>
+        <div style="margin-top: 0.5rem; font-size: 9px; font-weight: 700; color: #cbd5e1; text-transform: uppercase; letter-spacing: 0.1em;">© 2026 TSTOHLS 1.3.0 | OPEN SOURCE PROJECT</div>
+    </footer>
+</body>
+</html>

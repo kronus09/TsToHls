@@ -93,7 +93,8 @@ const renderPreview = () => {
     displayGroups.forEach(g => {
         const btn = document.createElement('button');
         btn.className = `group-tag ${currentGroup === g ? 'active' : ''}`;
-        btn.textContent = g;
+        const count = g === '全部' ? channels.length : channels.filter(c => c.group === g).length;
+        btn.innerHTML = `${g}<span class="group-count">${count}</span>`;
         btn.onclick = () => {
             currentGroup = g;
             renderPreview();
