@@ -69,6 +69,12 @@ const setupTabs = () => {
 
     btnC.onclick = () => switchTab(true);
     btnP.onclick = () => switchTab(false);
+
+    // 检查URL参数，自动切换到直播预览
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('tab') === 'preview') {
+        switchTab(false);
+    }
 };
 
 const renderPreview = () => {
@@ -156,7 +162,7 @@ const playStream = (ch) => {
                                 xhrSetup: function(xhr, url) {
                                     xhr.withCredentials = true;
                                 },
-                                enableWorker: false,
+                                enableWorker: true,
                                 lowLatencyMode: true,
                                 fastStart: true,
                                 maxBufferLength: 1,

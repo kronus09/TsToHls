@@ -73,29 +73,34 @@ func downloadLogo(id, remoteURL string) string {
 
 // ValidateStream：探测并只保留 H.264 视频流
 func ValidateStream(url string) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-	defer cancel()
+	// 添加重试机制，失败后重试2次
+	for i := 0; i < 3; i++ { // 最多尝试3次（包括第一次）
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		defer cancel()
 
-	cmd := exec.CommandContext(ctx, "ffprobe",
-		"-v", "error",
-		"-probesize", "32",
-		"-analyzeduration", "0",
-		"-select_streams", "v:0",
-		"-show_entries", "stream=codec_name",
-		"-of", "csv=p=0",
-		url)
+		cmd := exec.CommandContext(ctx, "ffprobe",
+			"-v", "error",
+			"-probesize", "32",
+			"-analyzeduration", "0",
+			"-select_streams", "v:0",
+			"-show_entries", "stream=codec_name",
+			"-of", "csv=p=0",
+			url)
 
-	out, err := cmd.Output()
-	if err != nil {
-		return false
-	}
+		out, err := cmd.Output()
+		if err == nil {
+			codec := strings.ToLower(strings.TrimSpace(string(out)))
+			codec = strings.ReplaceAll(codec, "\n", "")
+			codec = strings.ReplaceAll(codec, "\r", "")
 
-	codec := strings.ToLower(strings.TrimSpace(string(out)))
-	codec = strings.ReplaceAll(codec, "\n", "")
-	codec = strings.ReplaceAll(codec, "\r", "")
-
-	if codec != "" && (strings.Contains(codec, "h264") || strings.Contains(codec, "avc")) {
-		return true
+			if codec != "" && (strings.Contains(codec, "h264") || strings.Contains(codec, "avc")) {
+				return true
+			}
+		}
+		// 重试前短暂等待
+		if i < 2 {
+			time.Sleep(500 * time.Millisecond)
+		}
 	}
 	return false
 }

@@ -196,50 +196,49 @@ func (pm *ProcessManager) ensureProcess(id, out string) error {
 }
 
 func (pm *ProcessManager) killOldest() {
-	var oID string
-	var oT time.Time = time.Now()
-	for id, info := range pm.Processes {
-		if oID == "" || info.LastAccess.Before(oT) {
-			oT = info.LastAccess
-			oID = id
+	var oldestID string
+	var oldestTime time.Time
+
+	for id, p := range pm.Processes {
+		if oldestID == "" || p.LastAccess.Before(oldestTime) {
+			oldestID = id
+			oldestTime = p.LastAccess
 		}
 	}
-	if oID != "" {
-		p := pm.Processes[oID]
-		if p.Cmd.Process != nil {
-			fmt.Printf("🗑️  释放旧进程: %s\n", oID)
-			p.Cmd.Process.Kill()
-			p.Cmd.Wait()
-		}
-		delete(pm.Processes, oID)
+
+	if oldestID != "" {
+		p := pm.Processes[oldestID]
+		p.Cmd.Process.Kill()
+		delete(pm.Processes, oldestID)
 		os.RemoveAll(p.OutputDir)
+		fmt.Printf("⚠️ 已终止最旧的进程: %s\n", oldestID)
 	}
 }
 
 func (pm *ProcessManager) KeepAlive(id string) {
 	pm.Lock()
 	defer pm.Unlock()
-	if i, ok := pm.Processes[id]; ok {
-		i.LastAccess = time.Now()
+
+	if p, ok := pm.Processes[id]; ok {
+		p.LastAccess = time.Now()
 	}
 }
 
 func (pm *ProcessManager) cleanupLoop() {
-	ticker := time.NewTicker(30 * time.Second)
-	for range ticker.C {
+	for {
+		time.Sleep(30 * time.Second)
 		pm.Lock()
+
 		now := time.Now()
-		for id, i := range pm.Processes {
-			if now.Sub(i.LastAccess) > time.Duration(pm.Config.IdleTimeout)*time.Second {
-				if i.Cmd.Process != nil {
-					i.Cmd.Process.Kill()
-					i.Cmd.Wait()
-				}
+		for id, p := range pm.Processes {
+			if now.Sub(p.LastAccess) > time.Duration(pm.Config.IdleTimeout)*time.Second {
+				p.Cmd.Process.Kill()
 				delete(pm.Processes, id)
-				os.RemoveAll(i.OutputDir)
-				fmt.Printf("🧹 已自动清理闲置流: %s\n", id)
+				os.RemoveAll(p.OutputDir)
+				fmt.Printf("⏰ 已清理闲置进程: %s\n", id)
 			}
 		}
+
 		pm.Unlock()
 	}
 }
