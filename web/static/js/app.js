@@ -7,6 +7,7 @@
 let channels = [];
 let currentGroup = ''; 
 let art = null;
+let currentHls = null;
 let isExpertMode = false;
 
 const init = () => {
@@ -125,6 +126,11 @@ const renderPreview = () => {
 
 const playStream = (ch) => {
     const container = document.getElementById('playerContainer');
+    
+    if (currentHls) {
+        currentHls.destroy();
+        currentHls = null;
+    }
     if (art) art.destroy(true);
     container.innerHTML = '';
 
@@ -158,7 +164,7 @@ const playStream = (ch) => {
                 customType: {
                     m3u8: function (video, url) {
                         if (window.Hls && Hls.isSupported()) {
-                            const hls = new Hls({
+                            currentHls = new Hls({
                                 xhrSetup: function(xhr, url) {
                                     xhr.withCredentials = true;
                                 },
@@ -172,8 +178,8 @@ const playStream = (ch) => {
                                 nudgeRetryDelay: 100,
                                 nudgeMaxDelay: 1000
                             });
-                            hls.loadSource(url);
-                            hls.attachMedia(video);
+                            currentHls.loadSource(url);
+                            currentHls.attachMedia(video);
                         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                             video.src = url;
                             video.crossOrigin = 'use-credentials';
@@ -227,35 +233,99 @@ async function loadConfigFromServer() {
             const el = form.querySelector(`[name="${key}"]`);
             if (el) {
                 const val = String(config[key]);
-                if (!Array.from(el.options).some(o => o.value === val)) {
-                    el.add(new Option(val, val));
+                if (el.tagName === 'SELECT') {
+                    if (!Array.from(el.options).some(o => o.value === val)) {
+                        el.add(new Option(val, val));
+                    }
+                    el.value = val;
+                } else if (el.tagName === 'INPUT') {
+                    el.value = val;
                 }
-                el.value = val;
             }
         });
+        
+        const enableTranscode = document.getElementById('enable_video_transcode');
+        if (enableTranscode && config.enable_video_transcode !== undefined) {
+            enableTranscode.checked = config.enable_video_transcode;
+        }
+        
+        updateTranscodeVisibility();
     } catch (e) {}
 }
 
 document.getElementById('expertModeBtn').onclick = () => {
     isExpertMode = !isExpertMode;
-    const inputs = document.querySelectorAll('#configForm select');
+    const inputs = document.querySelectorAll('#configForm select, #configForm input');
     inputs.forEach(i => i.disabled = !isExpertMode);
+    
+    const transcodeInputs = document.querySelectorAll('#transcodeOptions select, #transcodeOptions input');
+    transcodeInputs.forEach(i => i.disabled = !isExpertMode);
+    
+    document.getElementById('enable_video_transcode').disabled = !isExpertMode;
     
     document.getElementById('configActions').classList.toggle('hidden', !isExpertMode);
     document.getElementById('expertModeBtn').textContent = isExpertMode ? "取消修改" : "编辑配置";
+    
+    if (!isExpertMode) {
+        document.getElementById('enable_video_transcode').checked = false;
+    }
+    
+    updateTranscodeVisibility();
+};
+
+function updateTranscodeVisibility() {
+    const enableTranscode = document.getElementById('enable_video_transcode');
+    const warning = document.getElementById('transcodeWarning');
+    const options = document.getElementById('transcodeOptions');
+    
+    if (enableTranscode.checked) {
+        warning.classList.remove('hidden');
+        options.classList.remove('hidden');
+    } else {
+        warning.classList.add('hidden');
+        options.classList.add('hidden');
+    }
+}
+
+document.getElementById('enable_video_transcode').onchange = function() {
+    if (this.checked) {
+        const confirmed = confirm(
+            '⚠️ 视频转码风险提示\n\n' +
+            'NAS设备CPU较弱，视频转码会占用大量CPU资源，可能导致系统卡顿。\n\n' +
+            '建议：\n' +
+            '• 使用 copy 模式直接复制视频流\n' +
+            '• 如需转码，请确保设备支持GPU加速\n\n' +
+            '确定要开启视频转码吗？'
+        );
+        if (!confirmed) {
+            this.checked = false;
+        }
+    }
+    updateTranscodeVisibility();
 };
 
 document.getElementById('saveConfigBtn').onclick = async () => {
-    const fd = new FormData(document.getElementById('configForm'));
-    const data = Object.fromEntries(fd.entries());
-    const numKeys = ['max_processes', 'hls_time', 'hls_list_size', 'idle_timeout', 'reconnect_delay'];
-    numKeys.forEach(k => { if(data[k]) data[k] = parseInt(data[k]); });
-
     try {
+        const existingRes = await fetch('/api/config');
+        const existingConfig = await existingRes.json();
+        
+        const fd = new FormData(document.getElementById('configForm'));
+        const formData = Object.fromEntries(fd.entries());
+        
+        formData.enable_video_transcode = document.getElementById('enable_video_transcode').checked;
+        
+        const numKeys = ['max_processes', 'hls_time', 'hls_list_size', 'idle_timeout', 'reconnect_delay'];
+        numKeys.forEach(k => { if(formData[k]) formData[k] = parseInt(formData[k]); });
+        
+        const boolKeys = ['low_latency_mode', 'check_source_reliability'];
+        boolKeys.forEach(k => { if(formData[k]) formData[k] = formData[k] === 'true'; });
+
+        const mergedConfig = { ...existingConfig, ...formData };
+
         const res = await fetch('/api/config', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(data)
+            body: JSON.stringify(mergedConfig)
         });
         if(res.ok) {
             alert("配置已更新，服务将重启应用新参数");

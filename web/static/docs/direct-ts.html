@@ -10,21 +10,7 @@
     <script src="/static/js/artplayer.js"></script>
     <script src="/static/js/mpegts.min.js"></script>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, sans-serif; background-color: #f8fafc; min-height: 100vh; }
-        .container { max-width: 1400px; margin: 0 auto; padding: 1.5rem; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
-        .header-left { display: flex; align-items: center; gap: 0.75rem; flex: 1; }
-        .header-center { display: flex; flex-direction: column; justify-content: center; margin-left: 2rem; padding-left: 2rem; border-left: 1px solid #e2e8f0; }
-        .header-center-title { font-size: 0.875rem; font-weight: 700; color: #4f46e5; margin-bottom: 0.25rem; }
-        .header-center-desc { font-size: 0.75rem; font-weight: 500; color: #64748b; line-height: 1.4; }
-        .logo { width: 2.5rem; height: 2.5rem; background: #4f46e5; border-radius: 0.75rem; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.3); }
-        .logo img { width: 1.5rem; height: 1.5rem; object-fit: contain; }
-        .title { font-size: 1.25rem; font-weight: 800; color: #1e293b; }
-        .title span { color: #4f46e5; font-size: 0.875rem; font-family: monospace; margin-left: 0.25rem; }
-        .back-link { display: inline-flex; align-items: center; gap: 0.5rem; background: #f1f5f9; color: #475569; padding: 0.5rem 1rem; border-radius: 0.5rem; font-weight: 600; text-decoration: none; font-size: 0.875rem; transition: all 0.2s; }
-        .back-link:hover { background: #e2e8f0; color: #1e293b; }
-        .player-wrapper { width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 1rem; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); margin-bottom: 1rem; position: relative; }
+        .player-wrapper { background-color: #000; border-radius: 1.5rem; overflow: hidden; aspect-ratio: 16/9; width: 100%; }
         .player-wrapper.fullscreen-page { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; aspect-ratio: auto; z-index: 9999; border-radius: 0; }
         .player-container { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-weight: 600; position: relative; }
         .video-wrapper { width: 100%; height: 100%; position: relative; cursor: pointer; }
@@ -41,51 +27,43 @@
         .volume-slider { width: 5rem; height: 0.25rem; -webkit-appearance: none; appearance: none; background: rgba(255,255,255,0.3); border-radius: 0.125rem; cursor: pointer; }
         .volume-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 0.75rem; height: 0.75rem; background: white; border-radius: 50%; cursor: pointer; }
         .control-spacer { flex: 1; }
-        .channel-section { background: white; border-radius: 1rem; padding: 1rem; border: 1px solid #e2e8f0; }
-        .section-title { font-size: 0.875rem; font-weight: 700; color: #475569; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem; }
-        .group-tags { display: flex; gap: 0.5rem; overflow-x: auto; padding-bottom: 0.5rem; margin-bottom: 1rem; }
         .group-tag { padding: 0.375rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; white-space: nowrap; cursor: pointer; transition: all 0.2s; background: #f1f5f9; color: #64748b; border: none; display: inline-flex; align-items: center; gap: 0.375rem; }
         .group-tag:hover { background: #e2e8f0; }
         .group-tag.active { background: #4f46e5; color: white; }
         .group-tag.active .group-count { background: rgba(255,255,255,0.2); color: white; }
         .group-count { font-size: 0.625rem; font-weight: 700; padding: 0.125rem 0.375rem; background: #cbd5e1; color: #475569; border-radius: 9999px; min-width: 1.25rem; text-align: center; }
-        .channel-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; }
-        @media (min-width: 640px) { .channel-grid { grid-template-columns: repeat(5, 1fr); } }
-        @media (min-width: 768px) { .channel-grid { grid-template-columns: repeat(6, 1fr); } }
-        @media (min-width: 1024px) { .channel-grid { grid-template-columns: repeat(8, 1fr); } }
-        @media (min-width: 1280px) { .channel-grid { grid-template-columns: repeat(10, 1fr); } }
-        .no-data { text-align: center; padding: 2rem; color: #94a3b8; }
         .channel-btn { transition: all 0.2s !important; border: 1px solid #f1f5f9 !important; background-color: #f1f5f9 !important; display: flex !important; flex-direction: column !important; align-items: center !important; justify-content: center !important; gap: 0.25rem !important; padding: 0.5rem 0.4rem !important; border-radius: 0.85rem !important; cursor: pointer !important; height: auto !important; }
         .channel-btn:hover { border-color: #4f46e5 !important; background-color: #ede9fe !important; transform: translateY(-1px); }
         .channel-btn img { width: 1.75rem !important; height: 1.75rem !important; object-fit: contain !important; flex-shrink: 0; }
         .channel-btn span { font-size: 0.65rem !important; font-weight: 800 !important; color: #475569 !important; text-align: center; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
+        .tab-btn { padding: 0.5rem 1rem; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 700; transition: all 0.2s; text-decoration: none; white-space: nowrap; }
+        .tab-btn.active { background-color: white; color: #4f46e5; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .tab-btn.inactive { color: #64748b; }
+        .tab-btn:hover { color: #4f46e5; }
     </style>
 </head>
-<body>
-    <div class="container">
-        <div class="header">
-            <div class="header-left">
-                <div class="logo"><img src="/static/logo.png" alt="Logo"></div>
-                <h1 class="title">TsToHls <span>1.3.1</span></h1>
-                <div class="header-center">
-                    <div class="header-center-title">Direct TS</div>
-                    <div class="header-center-desc">直接播放 source.m3u 中的 TS 流，无需转换为 HLS 格式，更低的延迟，更快的启动速度。</div>
-                </div>
+<body class="p-4 md:p-8 min-h-screen">
+    <div class="max-w-6xl mx-auto">
+        <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-10">
+            <div class="flex items-center gap-3 flex-1">
+                <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg"><img src="/static/logo.png" class="w-6 h-6 object-contain"></div>
+                <h1 class="text-xl md:text-2xl font-black tracking-tight">TsToHls <span class="text-indigo-600 text-sm font-mono ml-1">原流播放</span><span class="text-slate-400 text-xs font-normal ml-2">&nbsp;&nbsp;(未经转码，仅PC端支持)</span></h1>
             </div>
-            <a href="/" class="back-link">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"></path><path d="M19 12H5"></path></svg>
-                返回管理界面
-            </a>
-        </div>
+            <div class="flex bg-slate-100 p-1 rounded-xl shadow-inner flex-shrink-0">
+                <a href="/" class="tab-btn inactive text-sm px-3 py-1.5">系统控制</a>
+                <a href="/?tab=preview" class="tab-btn inactive text-sm px-3 py-1.5">HLS播放</a>
+                <a href="/static/docs/direct-ts.html" class="tab-btn active text-sm px-3 py-1.5">原流播放</a>
+                <a href="/static/docs/usage.html" class="tab-btn inactive text-sm px-3 py-1.5">使用说明</a>
+            </div>
+        </header>
 
-        <div class="player-wrapper">
-            <div id="playerContainer" class="player-container">请选择频道开始播放</div>
-        </div>
-
-        <div class="channel-section">
-            <div id="groupContainer" class="group-tags"></div>
-            <div id="channelGrid" class="channel-grid"></div>
-            <div id="noDataMsg" class="no-data" style="display: none;">暂无频道数据，请先在数据导入页面导入 M3U 文件</div>
+        <div class="space-y-6">
+            <div class="player-wrapper shadow-2xl shadow-indigo-100">
+                <div id="playerContainer" class="player-container">请选择频道开始播放</div>
+            </div>
+            <div id="groupContainer" class="flex gap-2 overflow-x-auto no-scrollbar py-2"></div>
+            <div id="channelGrid" class="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-3 pb-6"></div>
+            <div id="noDataMsg" class="text-center py-8 text-slate-400" style="display: none;">暂无频道数据，请先导入 M3U 文件</div>
         </div>
     </div>
 
@@ -358,7 +336,7 @@
             <p style="font-size: 10px; font-weight: 900; color: #cbd5e1; text-transform: uppercase; letter-spacing: 0.2em; margin: 0;">Designed by <span style="color: #94a3b8;">KRONUS09</span></p>
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
         </a>
-        <div style="margin-top: 0.5rem; font-size: 9px; font-weight: 700; color: #cbd5e1; text-transform: uppercase; letter-spacing: 0.1em;">© 2026 TSTOHLS 1.3.1 | OPEN SOURCE PROJECT</div>
+        <div style="margin-top: 0.5rem; font-size: 9px; font-weight: 700; color: #cbd5e1; text-transform: uppercase; letter-spacing: 0.1em;">© 2026 TSTOHLS 1.3.2 | OPEN SOURCE PROJECT</div>
     </footer>
 </body>
 </html>

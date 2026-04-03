@@ -6,23 +6,32 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv" // 导入 strconv 用于数字转字符串
+	"strconv"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/fsnotify/fsnotify"
 )
 
 // FFmpegConfig 定义了可调节的性能和转换参数
 type FFmpegConfig struct {
 	MaxProcesses           int    `json:"max_processes"`
-	HlsTime                int    `json:"hls_time"`      // 修改为 int
-	HlsListSize            int    `json:"hls_list_size"` // 修改为 int
-	IdleTimeout            int    `json:"idle_timeout"`  // 单位：秒
-	VideoCodec             string `json:"video_codec"`
+	HlsTime                int    `json:"hls_time"`
+	HlsListSize            int    `json:"hls_list_size"`
+	IdleTimeout            int    `json:"idle_timeout"`
+	ReconnectDelay         int    `json:"reconnect_delay"`
 	AudioCodec             string `json:"audio_codec"`
 	AudioBitrate           string `json:"audio_bitrate"`
-	ReconnectDelay         int    `json:"reconnect_delay"` // 修改为 int
-	HlsFlags               string `json:"hls_flags"`
+	HlsTempDir             string `json:"hls_temp_dir"`
+	LowLatencyMode         bool   `json:"low_latency_mode"`
+	EnableVideoTranscode   bool   `json:"enable_video_transcode"`
+	VideoCodec             string `json:"video_codec"`
+	VideoResolution        string `json:"video_resolution"`
+	VideoBitrate           string `json:"video_bitrate"`
 	HlsSegmentType         string `json:"hls_segment_type"`
+	HlsFlags               string `json:"hls_flags"`
+	CustomFFmpegArgs       string `json:"custom_ffmpeg_args"`
 	CheckSourceReliability bool   `json:"check_source_reliability"`
 }
 
@@ -39,6 +48,7 @@ type ProcessManager struct {
 	Config      FFmpegConfig
 	MappingPath string
 	ConfigPath  string
+	channels    map[string]*ChannelInfo
 }
 
 func NewProcessManager() *ProcessManager {
@@ -46,10 +56,11 @@ func NewProcessManager() *ProcessManager {
 		Processes:   make(map[string]*ProcessInfo),
 		MappingPath: "m3u/mapping.json",
 		ConfigPath:  "m3u/config.json",
+		channels:    make(map[string]*ChannelInfo),
 	}
 
-	// 初始化时加载配置
 	pm.LoadConfig()
+	pm.LoadMapping()
 
 	go pm.cleanupLoop()
 	return pm
@@ -59,15 +70,21 @@ func NewProcessManager() *ProcessManager {
 func (pm *ProcessManager) LoadConfig() {
 	defaultCfg := FFmpegConfig{
 		MaxProcesses:           6,
-		HlsTime:                2, // 默认值改为数字
-		HlsListSize:            6, // 默认值改为数字
+		HlsTime:                1,
+		HlsListSize:            3,
 		IdleTimeout:            120,
-		VideoCodec:             "copy",
+		ReconnectDelay:         5,
 		AudioCodec:             "aac",
 		AudioBitrate:           "128k",
-		ReconnectDelay:         5, // 默认值改为数字
-		HlsFlags:               "delete_segments+discont_start+independent_segments",
+		HlsTempDir:             "",
+		LowLatencyMode:         true,
+		EnableVideoTranscode:   false,
+		VideoCodec:             "libx264",
+		VideoResolution:        "1280x720",
+		VideoBitrate:           "3M",
 		HlsSegmentType:         "mpegts",
+		HlsFlags:               "delete_segments+discont_start+independent_segments",
+		CustomFFmpegArgs:       "",
 		CheckSourceReliability: true,
 	}
 
@@ -82,6 +99,55 @@ func (pm *ProcessManager) LoadConfig() {
 	if err := json.Unmarshal(data, &pm.Config); err != nil {
 		fmt.Printf("❌ 解析配置文件失败，使用默认配置: %v\n", err)
 		pm.Config = defaultCfg
+		pm.SaveConfig()
+		return
+	}
+
+	changed := false
+	if pm.Config.MaxProcesses == 0 {
+		pm.Config.MaxProcesses = defaultCfg.MaxProcesses
+		changed = true
+	}
+	if pm.Config.HlsTime == 0 {
+		pm.Config.HlsTime = defaultCfg.HlsTime
+		changed = true
+	}
+	if pm.Config.HlsListSize == 0 {
+		pm.Config.HlsListSize = defaultCfg.HlsListSize
+		changed = true
+	}
+	if pm.Config.IdleTimeout == 0 {
+		pm.Config.IdleTimeout = defaultCfg.IdleTimeout
+		changed = true
+	}
+	if pm.Config.ReconnectDelay == 0 {
+		pm.Config.ReconnectDelay = defaultCfg.ReconnectDelay
+		changed = true
+	}
+	if pm.Config.VideoCodec == "" {
+		pm.Config.VideoCodec = defaultCfg.VideoCodec
+		changed = true
+	}
+	if pm.Config.AudioCodec == "" {
+		pm.Config.AudioCodec = defaultCfg.AudioCodec
+		changed = true
+	}
+	if pm.Config.AudioBitrate == "" {
+		pm.Config.AudioBitrate = defaultCfg.AudioBitrate
+		changed = true
+	}
+	if pm.Config.HlsFlags == "" {
+		pm.Config.HlsFlags = defaultCfg.HlsFlags
+		changed = true
+	}
+	if pm.Config.HlsSegmentType == "" {
+		pm.Config.HlsSegmentType = defaultCfg.HlsSegmentType
+		changed = true
+	}
+
+	if changed {
+		pm.SaveConfig()
+		fmt.Printf("📝 配置文件已更新，补充缺失字段\n")
 	}
 }
 
@@ -91,31 +157,48 @@ func (pm *ProcessManager) SaveConfig() {
 	_ = os.WriteFile(pm.ConfigPath, data, 0644)
 }
 
-func (pm *ProcessManager) getRawUrl(id string) (string, error) {
+func (pm *ProcessManager) LoadMapping() {
 	data, err := os.ReadFile(pm.MappingPath)
 	if err != nil {
-		return "", err
+		fmt.Printf("⚠️ 未找到 mapping 文件: %v\n", err)
+		return
 	}
 
-	type Channel struct {
-		ID  string `json:"id"`
-		Url string `json:"url"`
-	}
-
-	var channels []Channel
+	var channels []ChannelInfo
 	if err := json.Unmarshal(data, &channels); err != nil {
-		return "", fmt.Errorf("解析 mapping.json 失败: %v", err)
+		fmt.Printf("❌ 解析 mapping.json 失败: %v\n", err)
+		return
 	}
 
-	for _, ch := range channels {
-		if ch.ID == id {
-			return ch.Url, nil
-		}
+	for i := range channels {
+		pm.channels[channels[i].ID] = &channels[i]
 	}
-	return "", fmt.Errorf("ID [%s] 不存在", id)
+	fmt.Printf("✅ 已加载 %d 个频道到内存\n", len(pm.channels))
+}
+
+type ChannelInfo struct {
+	ID          string `json:"id"`
+	Url         string `json:"url"`
+	VideoCodec  string `json:"video_codec,omitempty"`
+	AudioCodec  string `json:"audio_codec,omitempty"`
+	Width       int    `json:"width,omitempty"`
+	Height      int    `json:"height,omitempty"`
+	FrameRate   string `json:"frame_rate,omitempty"`
+	AudioSample int    `json:"audio_sample,omitempty"`
+	InputFormat string `json:"input_format,omitempty"`
+}
+
+func (pm *ProcessManager) getChannelInfo(id string) (*ChannelInfo, error) {
+	if info, ok := pm.channels[id]; ok {
+		return info, nil
+	}
+	return nil, fmt.Errorf("ID [%s] 不存在", id)
 }
 
 func (pm *ProcessManager) GetM3u8Content(id, baseDir string) ([]byte, error) {
+	if pm.Config.HlsTempDir != "" {
+		baseDir = pm.Config.HlsTempDir
+	}
 	out := filepath.Join(baseDir, id)
 	if err := pm.ensureProcess(id, out); err != nil {
 		return nil, err
@@ -123,6 +206,45 @@ func (pm *ProcessManager) GetM3u8Content(id, baseDir string) ([]byte, error) {
 	pm.KeepAlive(id)
 
 	m3u8Path := filepath.Join(out, "index.m3u8")
+
+	if c, err := os.ReadFile(m3u8Path); err == nil {
+		return c, nil
+	}
+
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return pm.waitForM3u8Fallback(m3u8Path)
+	}
+	defer watcher.Close()
+
+	if err := watcher.Add(out); err != nil {
+		return pm.waitForM3u8Fallback(m3u8Path)
+	}
+
+	timeout := time.After(30 * time.Second)
+	for {
+		select {
+		case event, ok := <-watcher.Events:
+			if !ok {
+				return nil, fmt.Errorf("watcher 已关闭")
+			}
+			if event.Name == m3u8Path && (event.Op&fsnotify.Create == fsnotify.Create || event.Op&fsnotify.Write == fsnotify.Write) {
+				if c, err := os.ReadFile(m3u8Path); err == nil {
+					return c, nil
+				}
+			}
+		case err, ok := <-watcher.Errors:
+			if !ok {
+				return nil, fmt.Errorf("watcher 错误: %v", err)
+			}
+			fmt.Printf("⚠️ fsnotify 错误: %v\n", err)
+		case <-timeout:
+			return nil, fmt.Errorf("等待 HLS 切片生成超时")
+		}
+	}
+}
+
+func (pm *ProcessManager) waitForM3u8Fallback(m3u8Path string) ([]byte, error) {
 	for i := 0; i < 60; i++ {
 		if c, err := os.ReadFile(m3u8Path); err == nil {
 			return c, nil
@@ -144,7 +266,7 @@ func (pm *ProcessManager) ensureProcess(id, out string) error {
 		pm.killOldest()
 	}
 
-	raw, err := pm.getRawUrl(id)
+	info, err := pm.getChannelInfo(id)
 	if err != nil {
 		return err
 	}
@@ -154,23 +276,66 @@ func (pm *ProcessManager) ensureProcess(id, out string) error {
 		return fmt.Errorf("无法创建目录: %v", err)
 	}
 
-	// 使用从 config.json 加载的动态参数构建命令
-	// 注意：对于 int 类型，我们需要用 strconv.Itoa 转回字符串传给 ffmpeg 命令
-	cmd := exec.Command("ffmpeg",
+	args := []string{
 		"-reconnect", "1",
 		"-reconnect_streamed", "1",
 		"-reconnect_delay_max", strconv.Itoa(pm.Config.ReconnectDelay),
-		"-i", raw,
-		"-c:v", pm.Config.VideoCodec,
-		"-c:a", pm.Config.AudioCodec,
-		"-b:a", pm.Config.AudioBitrate,
+	}
+
+	if pm.Config.EnableVideoTranscode && pm.Config.CustomFFmpegArgs != "" {
+		customArgs := strings.Fields(pm.Config.CustomFFmpegArgs)
+		args = append(args, customArgs...)
+	}
+
+	args = append(args, "-i", info.Url)
+
+	if !pm.Config.EnableVideoTranscode {
+		args = append(args, "-c:v", "copy")
+	} else {
+		args = append(args, "-c:v", pm.Config.VideoCodec)
+		if pm.Config.VideoResolution != "" && pm.Config.VideoResolution != "keep" {
+			args = append(args, "-s", pm.Config.VideoResolution)
+		}
+		if pm.Config.VideoBitrate != "" {
+			args = append(args, "-b:v", pm.Config.VideoBitrate)
+		}
+		args = append(args, "-preset", "ultrafast")
+		args = append(args, "-tune", "zerolatency")
+	}
+
+	if pm.Config.AudioCodec == "copy" && info.AudioCodec != "" {
+		args = append(args, "-c:a", "copy")
+	} else {
+		args = append(args, "-c:a", pm.Config.AudioCodec)
+		if pm.Config.AudioBitrate != "" {
+			args = append(args, "-b:a", pm.Config.AudioBitrate)
+		}
+	}
+
+	if pm.Config.LowLatencyMode {
+		args = append(args,
+			"-fflags", "nobuffer",
+			"-flags", "low_delay",
+		)
+	}
+
+	hlsFlags := pm.Config.HlsFlags
+	if !strings.Contains(hlsFlags, "temp_file") {
+		hlsFlags += "+temp_file"
+	}
+
+	args = append(args,
 		"-f", "hls",
 		"-hls_time", strconv.Itoa(pm.Config.HlsTime),
 		"-hls_list_size", strconv.Itoa(pm.Config.HlsListSize),
-		"-hls_flags", pm.Config.HlsFlags,
+		"-hls_flags", hlsFlags,
 		"-hls_segment_type", pm.Config.HlsSegmentType,
-		filepath.Join(out, "index.m3u8"))
+		filepath.Join(out, "index.m3u8"),
+	)
 
+	fmt.Printf("🎬 启动 FFmpeg: %s\n", strings.Join(args, " "))
+
+	cmd := exec.Command("ffmpeg", args...)
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Start(); err != nil {

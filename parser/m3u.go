@@ -18,11 +18,30 @@ import (
 )
 
 type Channel struct {
-	ID    string `json:"id"`
-	Name  string `json:"name"`
-	Logo  string `json:"logo"`
-	Group string `json:"group"`
-	Url   string `json:"url"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Logo        string `json:"logo"`
+	Group       string `json:"group"`
+	Url         string `json:"url"`
+	VideoCodec  string `json:"video_codec,omitempty"`
+	AudioCodec  string `json:"audio_codec,omitempty"`
+	Width       int    `json:"width,omitempty"`
+	Height      int    `json:"height,omitempty"`
+	FrameRate   string `json:"frame_rate,omitempty"`
+	AudioSample int    `json:"audio_sample,omitempty"`
+	InputFormat string `json:"input_format,omitempty"`
+}
+
+type StreamInfo struct {
+	Valid       bool
+	VideoCodec  string
+	AudioCodec  string
+	Width       int
+	Height      int
+	FrameRate   string
+	AudioSample int
+	InputFormat string
+	FailReason  string
 }
 
 // downloadLogo 下载图标到本地并返回 web 访问路径
@@ -71,38 +90,162 @@ func downloadLogo(id, remoteURL string) string {
 	return webPath
 }
 
-// ValidateStream：探测并只保留 H.264 视频流
-func ValidateStream(url string) bool {
-	// 添加重试机制，失败后重试2次
-	for i := 0; i < 3; i++ { // 最多尝试3次（包括第一次）
-		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-		defer cancel()
+type probeResult struct {
+	Success    bool
+	VideoCodec string
+	Width      int
+	Height     int
+	FrameRate  string
+	FormatName string
+}
 
-		cmd := exec.CommandContext(ctx, "ffprobe",
-			"-v", "error",
-			"-probesize", "32",
-			"-analyzeduration", "0",
-			"-select_streams", "v:0",
-			"-show_entries", "stream=codec_name",
-			"-of", "csv=p=0",
-			url)
+func probeOnce(url, probesize, analyzeduration string, timeout time.Duration) probeResult {
+	result := probeResult{Success: false}
 
-		out, err := cmd.Output()
-		if err == nil {
-			codec := strings.ToLower(strings.TrimSpace(string(out)))
-			codec = strings.ReplaceAll(codec, "\n", "")
-			codec = strings.ReplaceAll(codec, "\r", "")
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 
-			if codec != "" && (strings.Contains(codec, "h264") || strings.Contains(codec, "avc")) {
-				return true
-			}
+	cmd := exec.CommandContext(ctx, "ffprobe",
+		"-v", "error",
+		"-probesize", probesize,
+		"-analyzeduration", analyzeduration,
+		"-show_entries", "stream=codec_name,width,height,r_frame_rate:format=format_name",
+		"-of", "json",
+		"-select_streams", "v:0",
+		url)
+
+	out, err := cmd.Output()
+	if err != nil {
+		return result
+	}
+
+	var parsed struct {
+		Streams []struct {
+			CodecName string `json:"codec_name"`
+			Width     int    `json:"width"`
+			Height    int    `json:"height"`
+			FrameRate string `json:"r_frame_rate"`
+		} `json:"streams"`
+		Format struct {
+			FormatName string `json:"format_name"`
+		} `json:"format"`
+	}
+
+	if err := json.Unmarshal(out, &parsed); err != nil {
+		return result
+	}
+
+	if len(parsed.Streams) == 0 {
+		return result
+	}
+
+	stream := parsed.Streams[0]
+	result.Success = true
+	result.VideoCodec = stream.CodecName
+	result.Width = stream.Width
+	result.Height = stream.Height
+	result.FrameRate = stream.FrameRate
+	result.FormatName = parsed.Format.FormatName
+
+	return result
+}
+
+func probeAudio(url string) (string, int) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "ffprobe",
+		"-v", "error",
+		"-probesize", "256K",
+		"-analyzeduration", "500K",
+		"-select_streams", "a:0",
+		"-show_entries", "stream=codec_name,sample_rate",
+		"-of", "json",
+		url)
+
+	out, err := cmd.Output()
+	if err != nil {
+		return "", 0
+	}
+
+	var result struct {
+		Streams []struct {
+			CodecName  string `json:"codec_name"`
+			SampleRate string `json:"sample_rate"`
+		} `json:"streams"`
+	}
+
+	if json.Unmarshal(out, &result) != nil || len(result.Streams) == 0 {
+		return "", 0
+	}
+
+	var sampleRate int
+	if result.Streams[0].SampleRate != "" {
+		fmt.Sscanf(result.Streams[0].SampleRate, "%d", &sampleRate)
+	}
+
+	return result.Streams[0].CodecName, sampleRate
+}
+
+// ProbeStream: 分层探测流信息
+// 第一层: 32K 极速探测 → 第二层: 256K 快速探测 → 第三层: 1M 标准探测
+func ProbeStream(url string) StreamInfo {
+	info := StreamInfo{Valid: false}
+
+	layers := []struct {
+		probesize      string
+		analyzedur     string
+		timeout        time.Duration
+		desc           string
+	}{
+		{"32K", "100K", 5 * time.Second, "32K"},
+		{"256K", "500K", 8 * time.Second, "256K"},
+		{"1M", "1M", 12 * time.Second, "1M"},
+		{"5M", "5M", 20 * time.Second, "5M"},
+	}
+
+	for _, layer := range layers {
+		result := probeOnce(url, layer.probesize, layer.analyzedur, layer.timeout)
+
+		if !result.Success {
+			continue
 		}
-		// 重试前短暂等待
-		if i < 2 {
-			time.Sleep(500 * time.Millisecond)
+
+		codec := strings.ToLower(result.VideoCodec)
+		if !strings.Contains(codec, "h264") && !strings.Contains(codec, "avc") {
+			info.VideoCodec = result.VideoCodec
+			info.Width = result.Width
+			info.Height = result.Height
+			info.FailReason = "非H264编码"
+			return info
+		}
+
+		info.VideoCodec = result.VideoCodec
+		info.Width = result.Width
+		info.Height = result.Height
+		info.FrameRate = result.FrameRate
+		info.InputFormat = result.FormatName
+		info.Valid = true
+
+		if result.Width > 0 && result.Height > 0 {
+			info.AudioCodec, info.AudioSample = probeAudio(url)
+			return info
 		}
 	}
-	return false
+
+	if info.Valid {
+		info.AudioCodec, info.AudioSample = probeAudio(url)
+	} else {
+		info.FailReason = "探测失败"
+	}
+
+	return info
+}
+
+// ValidateStream：探测并只保留 H.264 视频流（保留兼容性）
+func ValidateStream(url string) bool {
+	info := ProbeStream(url)
+	return info.Valid
 }
 
 func ParseAndGenerate(inputPath, serverAddr string, checkReliability bool) ([]Channel, error) {
@@ -183,15 +326,41 @@ func ParseAndGenerate(inputPath, serverAddr string, checkReliability bool) ([]Ch
 		go func(c Channel) {
 			defer wg.Done()
 			limit <- struct{}{}
-			if !checkReliability || ValidateStream(c.Url) {
+
+			if checkReliability {
+				info := ProbeStream(c.Url)
+				if info.Valid {
+					c.VideoCodec = info.VideoCodec
+					c.AudioCodec = info.AudioCodec
+					c.Width = info.Width
+					c.Height = info.Height
+					c.FrameRate = info.FrameRate
+					c.AudioSample = info.AudioSample
+					c.InputFormat = info.InputFormat
+					mu.Lock()
+					validChannels = append(validChannels, c)
+					mu.Unlock()
+					resolution := fmt.Sprintf("%dx%d", c.Width, c.Height)
+					if c.Width == 0 || c.Height == 0 {
+						resolution = "未知分辨率"
+					}
+					fmt.Printf("✅ 验证通过: %s [%s %s]\n", c.Name, resolution, c.VideoCodec)
+				} else {
+					if info.VideoCodec != "" {
+						resolution := fmt.Sprintf("%dx%d", info.Width, info.Height)
+						if info.Width == 0 || info.Height == 0 {
+							resolution = "未知分辨率"
+						}
+						fmt.Printf("❌ 验证失败: %s [%s %s] %s\n", c.Name, resolution, info.VideoCodec, info.FailReason)
+					} else {
+						fmt.Printf("❌ 验证失败: %s %s\n", c.Name, info.FailReason)
+					}
+				}
+			} else {
 				mu.Lock()
 				validChannels = append(validChannels, c)
 				mu.Unlock()
-				if checkReliability {
-					fmt.Printf("✅ 验证通过: %s\n", c.Name)
-				} else {
-					fmt.Printf("✅ 跳过验证: %s\n", c.Name)
-				}
+				fmt.Printf("✅ 跳过验证: %s\n", c.Name)
 			}
 			<-limit
 		}(ch)

@@ -21,16 +21,21 @@ import (
 var pm *manager.ProcessManager
 
 const (
-	Port    = "15140"
-	TempDir = "hls_temp"
+	Port = "15140"
 )
 
+func getTempDir() string {
+	if pm != nil && pm.Config.HlsTempDir != "" {
+		return pm.Config.HlsTempDir
+	}
+	return "hls_temp"
+}
+
 func main() {
-	// 初始化进程管理器
 	pm = manager.NewProcessManager()
 
-	// 确保必要目录存在
-	os.MkdirAll(TempDir, 0755)
+	tempDir := getTempDir()
+	os.MkdirAll(tempDir, 0755)
 	os.MkdirAll(filepath.Join("m3u", "logos"), 0755)
 
 	// --- 路由设置 ---
@@ -70,7 +75,7 @@ func main() {
 	http.HandleFunc("/proxy/", proxyHandler)
 
 	fmt.Println("-------------------------------------------")
-	fmt.Printf("🚀 TsToHls v1.3.1 服务已启动\n")
+	fmt.Printf("🚀 TsToHls v1.3.2 服务已启动\n")
 	fmt.Printf("👉 管理界面: http://127.0.0.1:%s\n", Port)
 	fmt.Printf("👉 订阅地址: http://127.0.0.1:%s/playlist/tstohls.m3u\n", Port)
 	fmt.Println("-------------------------------------------")
@@ -204,6 +209,7 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "解析失败", 500)
 		return
 	}
+	pm.LoadMapping()
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	fmt.Fprintf(w, `{"status":"ok", "count": %d, "message": "解析完成"}`, len(channels))
@@ -311,7 +317,7 @@ func streamHandler(w http.ResponseWriter, r *http.Request) {
 	id, file := p[1], p[2]
 	pm.KeepAlive(id)
 	if strings.HasSuffix(file, ".m3u8") {
-		content, err := pm.GetM3u8Content(id, TempDir)
+		content, err := pm.GetM3u8Content(id, getTempDir())
 		if err != nil {
 			http.Error(w, "流启动失败: "+err.Error(), 500)
 			return
@@ -319,7 +325,7 @@ func streamHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 		w.Write(content)
 	} else {
-		tsPath := filepath.Join(TempDir, id, file)
+		tsPath := filepath.Join(getTempDir(), id, file)
 		http.ServeFile(w, r, tsPath)
 	}
 }
