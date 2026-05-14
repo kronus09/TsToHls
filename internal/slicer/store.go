@@ -122,9 +122,17 @@ func (ss *SlicerStore) killOldestLocked() {
 	}
 
 	if oldestID != "" {
-		ss.slicers[oldestID].Stop()
+		oldest := ss.slicers[oldestID]
+		oldest.Stop()
 		delete(ss.slicers, oldestID)
 		fmt.Printf("⚠️ 已终止最旧的切片器: %s\n", oldestID)
+
+		deadline := time.Now().Add(3 * time.Second)
+		for oldest.IsRunning() && time.Now().Before(deadline) {
+			ss.mu.Unlock()
+			time.Sleep(100 * time.Millisecond)
+			ss.mu.Lock()
+		}
 	}
 }
 
