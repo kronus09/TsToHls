@@ -21,7 +21,8 @@ const init = () => {
         loadListFromServer();
         loadConfigFromServer();
         checkSourceFile();
-        setInterval(checkStatus, 10000);
+        checkStatus();
+        setInterval(checkStatus, 30000);
     });
 
     document.getElementById('checkSourceReliability').addEventListener('change', async (e) => {
