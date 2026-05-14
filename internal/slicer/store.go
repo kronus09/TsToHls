@@ -60,6 +60,7 @@ func (ss *SlicerStore) GetOrCreate(channelID string) (*Slicer, error) {
 	}
 
 	sl := NewSlicer(channelID, ch.Url, ss.config, chInfo)
+	sl.on5XX = func() { ss.KillOldest() }
 	ss.slicers[channelID] = sl
 
 	fmt.Printf("🎬 启动切片器: %s → %s\n", channelID, ch.Url)
@@ -104,6 +105,12 @@ func (ss *SlicerStore) GetActiveIDs() []string {
 		}
 	}
 	return ids
+}
+
+func (ss *SlicerStore) KillOldest() {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	ss.killOldestLocked()
 }
 
 func (ss *SlicerStore) killOldestLocked() {

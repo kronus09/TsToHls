@@ -11,6 +11,8 @@ import (
 	"github.com/asticode/go-astikit"
 )
 
+var Err5XX = errors.New("5XX")
+
 type SlicerConfig struct {
 	HlsTime        float64
 	HlsListSize    int
@@ -30,6 +32,7 @@ type Slicer struct {
 	running    bool
 	stopCh     chan struct{}
 	lastAccess time.Time
+	on5XX      func()
 }
 
 type ChannelInfo struct {
@@ -73,6 +76,16 @@ func (s *Slicer) Run() {
 		}
 
 		if err := s.slice(); err != nil {
+			if errors.Is(err, Err5XX) && s.on5XX != nil {
+				fmt.Printf("⚠️ 切片器 %s 5XX错误, 释放最旧连接后重试\n", s.channelID)
+				s.on5XX()
+				select {
+				case <-s.stopCh:
+					return
+				case <-time.After(1 * time.Second):
+				}
+				continue
+			}
 			fmt.Printf("⚠️ 切片器 %s 退出: %v，%d秒后重连\n", s.channelID, err, s.config.ReconnectDelay)
 		}
 
@@ -147,6 +160,10 @@ func (s *Slicer) slice() error {
 	dict.Set("analyzeduration", "1000000", 0)
 
 	if err := demuxCtx.OpenInput(s.sourceURL, nil, dict); err != nil {
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "5XX") || strings.Contains(errMsg, "Server Error") {
+			return fmt.Errorf("%w: %s", Err5XX, errMsg)
+		}
 		return fmt.Errorf("打开源失败: %w", err)
 	}
 	closer.Add(demuxCtx.CloseInput)
@@ -194,7 +211,7 @@ func (s *Slicer) slice() error {
 	}
 
 	var segStartPts float64
-	segStartPtsSet := false
+	keyframeSeen := false
 	segmentCount := 0
 
 	pkt := astiav.AllocPacket()
@@ -226,9 +243,14 @@ func (s *Slicer) slice() error {
 		isAudio := inStream.CodecParameters().MediaType() == astiav.MediaTypeAudio
 
 		if isVideo {
-			if !segStartPtsSet {
-				segStartPts = ptsToSeconds(pkt.Pts(), inStream.TimeBase())
-				segStartPtsSet = true
+			if !keyframeSeen {
+				if pkt.Flags().Has(astiav.PacketFlagKey) {
+					keyframeSeen = true
+					segStartPts = ptsToSeconds(pkt.Pts(), inStream.TimeBase())
+				} else {
+					pkt.Unref()
+					continue
+				}
 			}
 
 			if pkt.Flags().Has(astiav.PacketFlagKey) && segmentCount > 0 {
@@ -290,7 +312,7 @@ func (s *Slicer) slice() error {
 				fmt.Printf("⚠️ %s 写视频帧错误: %v\n", s.channelID, err)
 			}
 
-			if segmentCount == 0 {
+			if segmentCount == 0 && keyframeSeen {
 				segmentCount = 1
 			}
 		} else if isAudio && audioOutStream != nil {
