@@ -159,10 +159,11 @@ func ParseAndGenerate(inputPath, serverAddr string, checkReliability bool) ([]Ch
 	failed := 0
 	deferred := 0
 
-	for _, ch := range rawChannels {
+	for i := range rawChannels {
 		wg.Add(1)
-		go func(c Channel) {
+		go func(idx int) {
 			defer wg.Done()
+			c := &rawChannels[idx]
 			limit <- struct{}{}
 
 			if checkReliability {
@@ -185,9 +186,16 @@ func ParseAndGenerate(inputPath, serverAddr string, checkReliability bool) ([]Ch
 					passed++
 					mu.Unlock()
 				} else if info.FailReason == "待后台探测" {
+					c.VideoCodec = info.VideoCodec
+					c.AudioCodec = info.AudioCodec
+					c.Width = info.Width
+					c.Height = info.Height
+					c.FrameRate = info.FrameRate
+					c.AudioSample = info.AudioSample
+					c.InputFormat = info.InputFormat
 					c.Enabled = false
-					c.FailReason = "待后台探测"
-					fmt.Printf("⏳ 待后台探测: %s\n", c.Name)
+					c.FailReason = info.VideoCodec
+					fmt.Printf("⏳ 待后台探测: %s [%s]\n", c.Name, c.VideoCodec)
 					mu.Lock()
 					deferred++
 					mu.Unlock()
@@ -200,7 +208,7 @@ func ParseAndGenerate(inputPath, serverAddr string, checkReliability bool) ([]Ch
 					c.FailReason = info.FailReason
 					if info.VideoCodec != "" {
 						resolution := fmt.Sprintf("%dx%d", info.Width, info.Height)
-						if info.Width == 0 || info.Height == 0 {
+						if c.Width == 0 || c.Height == 0 {
 							resolution = "未知分辨率"
 						}
 						fmt.Printf("❌ 验证失败: %s [%s %s] %s\n", c.Name, resolution, info.VideoCodec, info.FailReason)
@@ -245,7 +253,7 @@ func ParseAndGenerate(inputPath, serverAddr string, checkReliability bool) ([]Ch
 				mu.Unlock()
 			}
 			<-limit
-		}(ch)
+		}(i)
 	}
 	wg.Wait()
 

@@ -10,7 +10,7 @@ WORKDIR /app
 
 RUN git clone --depth 1 --branch n8.0 https://github.com/FFmpeg/FFmpeg.git /tmp/ffmpeg && \
     cd /tmp/ffmpeg && \
-    ./configure --prefix=/opt/ffmpeg --enable-gpl --enable-libx264 \
+    ./configure --prefix=/opt/ffmpeg --enable-gpl \
       --enable-shared --disable-static --disable-doc --disable-ffplay \
       --enable-ffmpeg --enable-ffprobe && \
     make -j$(nproc) && make install && \
@@ -40,7 +40,10 @@ WORKDIR /app
 COPY --from=builder /opt/ffmpeg/lib /opt/ffmpeg/lib
 COPY --from=builder /opt/ffmpeg/bin/ffmpeg /usr/bin/ffmpeg
 COPY --from=builder /opt/ffmpeg/bin/ffprobe /usr/bin/ffprobe
-RUN echo "/opt/ffmpeg/lib" > /etc/ld-musl-x86_64.path
+RUN arch=$(uname -m) && \
+    if [ "$arch" = "x86_64" ]; then ld_path="/etc/ld-musl-x86_64.path"; \
+    elif [ "$arch" = "aarch64" ]; then ld_path="/etc/ld-musl-aarch64.path"; fi && \
+    echo "/opt/ffmpeg/lib" > "$ld_path"
 
 COPY --from=builder /app/tstohls .
 COPY --from=builder /app/web ./web

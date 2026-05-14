@@ -393,8 +393,11 @@ function setupDragAndDrop() {
         if(window.lucide) lucide.createIcons();
     }
 
+    let urlEditedByUser = false;
+    const urlInput = document.getElementById('urlInput');
+    urlInput.addEventListener('input', () => { urlEditedByUser = true; });
+
     uploadBtn.onclick = async () => {
-        const urlInput = document.getElementById('urlInput');
         const url = urlInput.value.trim();
         
         uploadBtn.disabled = true;
@@ -404,49 +407,33 @@ function setupDragAndDrop() {
             let res;
             const checkSourceReliability = document.getElementById('checkSourceReliability').checked;
             
-            // 检查是否有新选择的文件或输入的URL
             if(input.files[0]) {
-                // 有新选择的文件，直接上传
                 const fd = new FormData();
                 fd.append('m3uFile', input.files[0]);
                 fd.append('checkSourceReliability', checkSourceReliability);
                 res = await fetch('/api/upload', { method: 'POST', body: fd });
-            } else if(url) {
-                // 有输入的URL，直接上传
+            } else if(url && urlEditedByUser) {
                 res = await fetch('/api/upload', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ url: url, checkSourceReliability: checkSourceReliability })
                 });
             } else {
-                // 没有新选择的文件或输入的URL，检查source.m3u文件
                 const sourceCheck = await fetch('/api/check-source');
                 const sourceData = await sourceCheck.json();
                 
-                if(sourceData.exists) {
-                    if(sourceData.sourceUrl) {
-                        // 文件内有订阅地址，从订阅地址重新拉取
-                        res = await fetch('/api/upload', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({ url: sourceData.sourceUrl, checkSourceReliability: checkSourceReliability })
-                        });
-                    } else {
-                        // 文件内没有订阅地址，直接使用该文件
-                        // 这里需要创建一个FormData对象，模拟文件上传
-                        // 但由于我们无法直接读取本地文件，需要通过后端API来处理
-                        res = await fetch('/api/reprocess', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({ checkSourceReliability: checkSourceReliability })
-                        });
-                    }
+                if(sourceData.exists && sourceData.sourceUrl) {
+                    res = await fetch('/api/upload', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url: sourceData.sourceUrl, checkSourceReliability: checkSourceReliability })
+                    });
+                } else if(sourceData.exists) {
+                    res = await fetch('/api/reprocess', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ checkSourceReliability: checkSourceReliability })
+                    });
                 } else {
                     alert("请选择 M3U 文件或输入订阅地址");
                     uploadBtn.disabled = false;

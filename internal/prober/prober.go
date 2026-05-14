@@ -42,7 +42,7 @@ func (p *BackgroundProber) IsRunning() bool {
 func (p *BackgroundProber) run() {
 	defer p.running.Store(false)
 
-	channels, err := db.GetChannelsByFailReason("待后台探测")
+	channels, err := db.GetChannelsForProbing()
 	if err != nil || len(channels) == 0 {
 		return
 	}
@@ -52,14 +52,17 @@ func (p *BackgroundProber) run() {
 	for _, ch := range channels {
 		info := probe.ProbeStreamFull(ch.Url)
 
-		codec := strings.ToLower(info.VideoCodec)
-		if info.Valid && !strings.Contains(codec, "h264") && !strings.Contains(codec, "avc") {
-			info.Valid = false
-			info.FailReason = "非H264编码"
-		}
-
 		if !info.Valid && info.FailReason == "" {
 			info.FailReason = "探测失败"
+		}
+
+		codec := strings.ToLower(info.VideoCodec)
+		isH264 := strings.Contains(codec, "h264") || strings.Contains(codec, "avc")
+
+		enabled := info.Valid && isH264
+		failReason := info.FailReason
+		if info.Valid && !isH264 {
+			failReason = info.VideoCodec
 		}
 
 		updated := db.Channel{
@@ -70,19 +73,19 @@ func (p *BackgroundProber) run() {
 			FrameRate:   info.FrameRate,
 			AudioSample: info.AudioSample,
 			InputFormat: info.InputFormat,
-			Enabled:     info.Valid,
-			FailReason:  info.FailReason,
+			Enabled:     enabled,
+			FailReason:  failReason,
 		}
 
 		if err := db.UpdateChannelMeta(ch.ID, updated); err != nil {
-			fmt.Printf("⚠️ 后台探测写入失败 %s: %v\n", ch.ID, err)
+			fmt.Printf("⚠️ 后台探测写入失败 %s: %v\n", ch.Name, err)
 			continue
 		}
 
-		if info.Valid {
-			fmt.Printf("✅ 后台探测通过: %s [%s %dx%d]\n", ch.ID, info.VideoCodec, info.Width, info.Height)
+		if enabled {
+			fmt.Printf("✅ 后台探测通过: %s [%s %dx%d]\n", ch.Name, info.VideoCodec, info.Width, info.Height)
 		} else {
-			fmt.Printf("❌ 后台探测失败: %s %s\n", ch.ID, info.FailReason)
+			fmt.Printf("ℹ️ 后台探测完成: %s [%s] %s\n", ch.Name, info.VideoCodec, failReason)
 		}
 	}
 

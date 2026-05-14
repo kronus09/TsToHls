@@ -27,15 +27,15 @@ func main() {
 	os.MkdirAll("data", 0755)
 	update.SetDataDir("data")
 
-	if err := db.Init(); err != nil {
-		log.Fatalf("数据库初始化失败: %v", err)
-	}
-	defer db.Close()
-
 	needMigrate := update.NeedMigrate()
 	if needMigrate {
 		update.SetStatus("migrating")
 	}
+
+	if err := db.Init(); err != nil {
+		log.Fatalf("数据库初始化失败: %v", err)
+	}
+	defer db.Close()
 
 	pm := manager.NewProcessManager()
 	handler.PM = pm

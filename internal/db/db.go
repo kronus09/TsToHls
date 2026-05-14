@@ -292,6 +292,12 @@ func GetChannelsByFailReason(reason string) ([]Channel, error) {
 	)
 }
 
+func GetChannelsForProbing() ([]Channel, error) {
+	return queryChannels(
+		"SELECT " + channelColumns + " FROM channels WHERE enabled = 0 AND fail_reason != '' AND fail_reason != '探测失败' ORDER BY id",
+	)
+}
+
 func UpdateChannelMeta(id string, ch Channel) error {
 	enabled := 0
 	if ch.Enabled {

@@ -12,6 +12,7 @@ data/
 # 忽略开发环境配置
 .vscode/
 .idea/
+.arts/
 *.swp
 
 # 忽略日志文件

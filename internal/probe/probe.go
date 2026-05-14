@@ -50,6 +50,7 @@ func ProbeStream(url string) StreamInfo {
 
 		codec := strings.ToLower(result.videoCodec)
 		if !strings.Contains(codec, "h264") && !strings.Contains(codec, "avc") {
+			info.AudioCodec, info.AudioSample = probeAudio(url)
 			info.FailReason = "待后台探测"
 			return info
 		}
