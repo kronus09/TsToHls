@@ -65,8 +65,22 @@ func (s *Slicer) Run() {
 		s.mu.Unlock()
 	}()
 
-	if err := s.slice(); err != nil {
-		fmt.Printf("❌ 切片器 %s 异常退出: %v\n", s.channelID, err)
+	for {
+		select {
+		case <-s.stopCh:
+			return
+		default:
+		}
+
+		if err := s.slice(); err != nil {
+			fmt.Printf("⚠️ 切片器 %s 退出: %v，%d秒后重连\n", s.channelID, err, s.config.ReconnectDelay)
+		}
+
+		select {
+		case <-s.stopCh:
+			return
+		case <-time.After(time.Duration(s.config.ReconnectDelay) * time.Second):
+		}
 	}
 }
 
