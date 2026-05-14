@@ -21,7 +21,7 @@ const init = () => {
         loadListFromServer();
         loadConfigFromServer();
         checkSourceFile();
-        setInterval(checkStatus, 3000);
+        setInterval(checkStatus, 10000);
     });
 
     document.getElementById('checkSourceReliability').addEventListener('change', async (e) => {
@@ -172,6 +172,7 @@ const renderPreview = () => {
     const filtered = currentGroup === '全部' ? channels : channels.filter(c => c.group === currentGroup);
     
     filtered.forEach(ch => {
+        if (!ch.enabled) return;
         const b = document.createElement('div');
         b.className = 'channel-btn'; 
         b.innerHTML = `

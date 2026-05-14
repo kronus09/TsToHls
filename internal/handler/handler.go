@@ -23,12 +23,21 @@ import (
 
 var PM *manager.ProcessManager
 
+var (
+	lastCPU     float64
+	lastCPUTime time.Time
+)
+
 func getSystemStats() (string, string) {
-	cpuPercent, _ := cpu.Percent(200*time.Millisecond, false)
-	cpuStr := "0.0"
-	if len(cpuPercent) > 0 {
-		cpuStr = fmt.Sprintf("%.1f", cpuPercent[0])
+	now := time.Now()
+	if now.Sub(lastCPUTime) >= 3*time.Second {
+		cpuPercent, _ := cpu.Percent(0, false)
+		if len(cpuPercent) > 0 {
+			lastCPU = cpuPercent[0]
+		}
+		lastCPUTime = now
 	}
+	cpuStr := fmt.Sprintf("%.1f", lastCPU)
 
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
