@@ -156,8 +156,8 @@ func (s *Slicer) slice() error {
 	dict.Set("reconnect", "1", 0)
 	dict.Set("reconnect_streamed", "1", 0)
 	dict.Set("reconnect_delay_max", fmt.Sprintf("%d", s.config.ReconnectDelay), 0)
-	dict.Set("probesize", "32768", 0)
-	dict.Set("analyzeduration", "100000", 0)
+	dict.Set("probesize", "262144", 0)
+	dict.Set("analyzeduration", "500000", 0)
 
 	if err := demuxCtx.OpenInput(s.sourceURL, nil, dict); err != nil {
 		errMsg := err.Error()
