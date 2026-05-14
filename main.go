@@ -45,7 +45,6 @@ func main() {
 		HlsListSize:    pm.Config.HlsListSize,
 		IdleTimeout:    pm.Config.IdleTimeout,
 		ReconnectDelay: pm.Config.ReconnectDelay,
-		KeyframeWaitMs: pm.Config.KeyframeWaitMs,
 		AudioCodec:     pm.Config.AudioCodec,
 		AudioBitrate:   pm.Config.AudioBitrate,
 	}, pm.Config.MaxProcesses)

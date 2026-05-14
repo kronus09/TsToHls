@@ -17,7 +17,6 @@ type FFmpegConfig struct {
 	ReconnectDelay         int    `json:"reconnect_delay"`
 	AudioCodec             string `json:"audio_codec"`
 	AudioBitrate           string `json:"audio_bitrate"`
-	KeyframeWaitMs         int    `json:"keyframe_wait_ms"`
 	CheckSourceReliability bool   `json:"check_source_reliability"`
 }
 
@@ -61,7 +60,6 @@ func (pm *ProcessManager) LoadConfig() {
 		ReconnectDelay:         5,
 		AudioCodec:             "aac",
 		AudioBitrate:           "128k",
-		KeyframeWaitMs:         5000,
 		CheckSourceReliability: true,
 	}
 
@@ -106,10 +104,6 @@ func (pm *ProcessManager) LoadConfig() {
 	}
 	if pm.Config.AudioBitrate == "" {
 		pm.Config.AudioBitrate = defaultCfg.AudioBitrate
-		changed = true
-	}
-	if pm.Config.KeyframeWaitMs == 0 {
-		pm.Config.KeyframeWaitMs = defaultCfg.KeyframeWaitMs
 		changed = true
 	}
 

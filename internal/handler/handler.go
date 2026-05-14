@@ -308,11 +308,7 @@ func StreamHandler(w http.ResponseWriter, r *http.Request) {
 
 	if strings.HasSuffix(file, ".m3u8") {
 		store := sl.GetStore()
-		waitMs := PM.Config.KeyframeWaitMs
-		if waitMs <= 0 {
-			waitMs = 5000
-		}
-		deadline := time.Now().Add(time.Duration(waitMs) * time.Millisecond)
+		deadline := time.Now().Add(3 * time.Second)
 		for store.SegmentCount() == 0 && time.Now().Before(deadline) {
 			time.Sleep(200 * time.Millisecond)
 		}

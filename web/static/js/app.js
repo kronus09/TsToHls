@@ -328,7 +328,7 @@ document.getElementById('saveConfigBtn').onclick = async () => {
         const fd = new FormData(document.getElementById('configForm'));
         const formData = Object.fromEntries(fd.entries());
         
-        const numKeys = ['max_processes', 'hls_time', 'hls_list_size', 'idle_timeout', 'reconnect_delay', 'keyframe_wait_ms'];
+        const numKeys = ['max_processes', 'hls_time', 'hls_list_size', 'idle_timeout', 'reconnect_delay'];
         numKeys.forEach(k => { if(formData[k]) formData[k] = parseInt(formData[k]); });
         
         formData.check_source_reliability = document.getElementById('checkSourceReliability').checked;

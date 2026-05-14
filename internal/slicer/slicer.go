@@ -16,7 +16,6 @@ type SlicerConfig struct {
 	HlsListSize    int
 	IdleTimeout    int
 	ReconnectDelay int
-	KeyframeWaitMs int
 	AudioCodec     string
 	AudioBitrate   string
 }

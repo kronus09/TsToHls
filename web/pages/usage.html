@@ -59,7 +59,7 @@
                 <div class="card" id="overview">
                     <h2>概述</h2>
                     <p>TsToHls 是一个将 M3U 播放列表转换为 HLS 格式的工具，支持将直播源转换为可在浏览器和各种播放器中播放的 HLS 流。</p>
-                    <p>v1.4.0 采用进程内切片架构（go-astiav），替代了外部 FFmpeg 进程调用，实现关键帧对齐快速启动、SegmentStore 内存直出零磁盘 IO、音频实时转码（mp2 → aac）。</p>
+                    <p>v1.4.0 采用进程内切片架构（go-astiav），替代了外部 FFmpeg 进程调用，实现首帧快速启动、SegmentStore 内存直出零磁盘 IO、音频实时转码（mp2 → aac）。</p>
                 </div>
 
                 <div class="card" id="installation">
@@ -179,13 +179,12 @@
                         <li><strong>列表容量</strong>：M3U8 中保留的切片数（默认 4）</li>
                         <li><strong>闲置超时</strong>：无访问后自动释放切片器的秒数（默认 120）</li>
                         <li><strong>重连延迟</strong>：断流后重试间隔秒数（默认 5）</li>
-                        <li><strong>关键帧等待</strong>：首次请求等待关键帧对齐的超时毫秒数（默认 5000）</li>
                         <li><strong>音频编码器</strong>：<code>aac</code>（推荐，实时转码 mp2→aac）或 <code>copy</code>（直接复制）</li>
                         <li><strong>音频码流</strong>：AAC 编码码率，可选 64k / 96k / 128k / 192k / 256k</li>
                     </ul>
 
                     <div class="note">
-                        <strong>架构说明：</strong> 切片器在进程内运行（go-astiav + CGO），视频流直接 copy，音频实时转码为 AAC。HLS 切片数据存储在内存中（SegmentStore），HTTP 请求直接读取内存返回，零磁盘 IO。关键帧对齐机制确保首帧快速启动，跳过非关键帧直到最近的 IDR 帧再开始切片。
+                        <strong>架构说明：</strong> 切片器在进程内运行（go-astiav + CGO），视频流直接 copy，音频实时转码为 AAC。HLS 切片数据存储在内存中（SegmentStore），HTTP 请求直接读取内存返回，零磁盘 IO。从第一帧直接开始输出，切分边界在关键帧处确保播放器正确解码。
                     </div>
                 </div>
             </div>
