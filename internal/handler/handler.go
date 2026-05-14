@@ -308,7 +308,7 @@ func StreamHandler(w http.ResponseWriter, r *http.Request) {
 
 	if strings.HasSuffix(file, ".m3u8") {
 		store := sl.GetStore()
-		deadline := time.Now().Add(5 * time.Second)
+		deadline := time.Now().Add(3 * time.Second)
 		for store.SegmentCount() == 0 && time.Now().Before(deadline) {
 			time.Sleep(100 * time.Millisecond)
 		}
