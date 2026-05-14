@@ -236,13 +236,11 @@ const playStream = (ch) => {
                                 },
                                 enableWorker: true,
                                 lowLatencyMode: true,
-                                fastStart: true,
+                                liveSyncDurationCount: 0.5,
+                                liveMaxLatencyDurationCount: 3,
                                 maxBufferLength: 1,
                                 maxMaxBufferLength: 3,
                                 maxBufferHole: 0.5,
-                                nudgeMaxRetry: 3,
-                                nudgeRetryDelay: 100,
-                                nudgeMaxDelay: 1000
                             });
                             currentHls.loadSource(url);
                             currentHls.attachMedia(video);

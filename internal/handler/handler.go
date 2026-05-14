@@ -310,7 +310,7 @@ func StreamHandler(w http.ResponseWriter, r *http.Request) {
 		store := sl.GetStore()
 		deadline := time.Now().Add(3 * time.Second)
 		for store.SegmentCount() == 0 && time.Now().Before(deadline) {
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(50 * time.Millisecond)
 		}
 		if store.SegmentCount() == 0 {
 			http.Error(w, "流尚未就绪", 503)
