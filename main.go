@@ -92,7 +92,7 @@ func main() {
 	http.HandleFunc("/proxy/", handler.ProxyHandler)
 
 	fmt.Println("-------------------------------------------")
-	fmt.Printf("🚀 TsToHls v1.4.0 服务已启动\n")
+	fmt.Printf("🚀 TsToHls v1.4.1 服务已启动\n")
 	fmt.Printf("👉 管理界面: http://127.0.0.1:%s\n", Port)
 	fmt.Printf("👉 订阅地址: http://127.0.0.1:%s/playlist/tstohls.m3u\n", Port)
 	fmt.Println("-------------------------------------------")
