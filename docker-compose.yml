@@ -7,10 +7,7 @@ services:
       - "15140:15140"
     volumes:
       - ./data:/app/data
-    tmpfs:
-      - /dev/shm:size=512M,mode=1777,exec
     environment:
-      - GIN_MODE=release
       - TZ=Asia/Shanghai
     logging:
       driver: "json-file"
