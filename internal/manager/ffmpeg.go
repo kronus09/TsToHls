@@ -53,7 +53,7 @@ func NewProcessManager() *ProcessManager {
 
 func (pm *ProcessManager) LoadConfig() {
 	defaultCfg := FFmpegConfig{
-		MaxProcesses:           6,
+		MaxProcesses:           5,
 		HlsTime:                1,
 		HlsListSize:            4,
 		IdleTimeout:            120,
