@@ -24,6 +24,11 @@ const (
 func main() {
 	astiav.SetLogLevel(astiav.LogLevelFatal)
 
+	fc := astiav.AllocFormatContext()
+	if fc != nil {
+		fc.Free()
+	}
+
 	os.MkdirAll("data", 0755)
 	update.SetDataDir("data")
 
