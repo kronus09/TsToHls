@@ -210,6 +210,11 @@ const playStream = (ch) => {
             
             console.log('播放URL:', streamUrl);
             
+            if (!streamUrl) {
+                container.innerHTML = '<p class="text-slate-400 text-center text-sm py-8">该频道未启用，无法播放</p>';
+                return;
+            }
+            
             art = new Artplayer({
                 container: container,
                 url: streamUrl,

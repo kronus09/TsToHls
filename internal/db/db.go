@@ -294,7 +294,7 @@ func GetChannelsByFailReason(reason string) ([]Channel, error) {
 
 func GetChannelsForProbing() ([]Channel, error) {
 	return queryChannels(
-		"SELECT " + channelColumns + " FROM channels WHERE enabled = 0 AND fail_reason != '' AND fail_reason != '探测失败' ORDER BY id",
+		"SELECT " + channelColumns + " FROM channels WHERE fail_reason = '待后台探测' ORDER BY id",
 	)
 }
 
