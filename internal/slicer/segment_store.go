@@ -85,14 +85,13 @@ func (cs *ChannelStore) generateM3U8() []byte {
 	b = append(b, "#EXT-X-VERSION:3\n"...)
 	b = append(b, fmt.Sprintf("#EXT-X-TARGETDURATION:%d\n", int(cs.maxDuration()+0.999))...)
 
-	if cs.segments[0].Discontinuity {
-		b = append(b, "#EXT-X-DISCONTINUITY\n"...)
-	}
-
 	firstSeq := cs.segments[0].Index
 	b = append(b, fmt.Sprintf("#EXT-X-MEDIA-SEQUENCE:%d\n", firstSeq)...)
 
-	for _, seg := range cs.segments {
+	for i, seg := range cs.segments {
+		if seg.Discontinuity && (i > 0 || firstSeq > 0) {
+			b = append(b, "#EXT-X-DISCONTINUITY\n"...)
+		}
 		b = append(b, fmt.Sprintf("#EXTINF:%.3f,\n", seg.Duration)...)
 		b = append(b, fmt.Sprintf("seg%05d.ts\n", seg.Index)...)
 	}

@@ -213,6 +213,7 @@ func (s *Slicer) slice() error {
 	var segStartPts float64
 	keyframeSeen := false
 	segmentCount := 0
+	prefillDone := false
 
 	pkt := astiav.AllocPacket()
 	closer.Add(pkt.Free)
@@ -243,17 +244,57 @@ func (s *Slicer) slice() error {
 		isAudio := inStream.CodecParameters().MediaType() == astiav.MediaTypeAudio
 
 		if isVideo {
-			if !keyframeSeen {
-				if pkt.Flags().Has(astiav.PacketFlagKey) {
-					keyframeSeen = true
-					segStartPts = ptsToSeconds(pkt.Pts(), inStream.TimeBase())
-				} else {
-					pkt.Unref()
-					continue
+			if !keyframeSeen && pkt.Flags().Has(astiav.PacketFlagKey) {
+				keyframeSeen = true
+				segStartPts = ptsToSeconds(pkt.Pts(), inStream.TimeBase())
+			}
+
+			if !prefillDone && segmentCount == 0 && isVideo {
+				currentPts := ptsToSeconds(pkt.Pts(), inStream.TimeBase())
+				if segStartPts == 0 {
+					segStartPts = currentPts
+				}
+				elapsed := currentPts - segStartPts
+				prefillDuration := s.config.HlsTime * 0.5
+				if prefillDuration < 0.3 {
+					prefillDuration = 0.3
+				}
+				if elapsed >= prefillDuration {
+					muxCtx.WriteTrailer()
+					s.store.AddSegment(sw.buf, elapsed, true)
+					segmentCount++
+					sw.buf = nil
+					prefillDone = true
+					segStartPts = 0
+
+					muxCtx.Free()
+					ioCtx.Free()
+
+					var newAt *audioTranscoder
+					var newAudioEncCtx *astiav.CodecContext
+					if needAudioTranscode {
+						newAt, err = s.createAudioTranscoder(audioInStream, closer)
+						if err != nil {
+							pkt.Unref()
+							return fmt.Errorf("重建音频转码器失败: %w", err)
+						}
+						newAudioEncCtx = newAt.encCodecContext
+					}
+
+					muxCtx, ioCtx, videoOutStream, audioOutStream, err = s.createMuxer(videoInStream, audioInStream, sw, newAudioEncCtx, closer)
+					if err != nil {
+						pkt.Unref()
+						return err
+					}
+
+					if needAudioTranscode && newAt != nil {
+						newAt.outputStream = audioOutStream
+						at = newAt
+					}
 				}
 			}
 
-			if pkt.Flags().Has(astiav.PacketFlagKey) && segmentCount > 0 {
+			if keyframeSeen && pkt.Flags().Has(astiav.PacketFlagKey) && segmentCount > 0 {
 				currentPts := ptsToSeconds(pkt.Pts(), inStream.TimeBase())
 				elapsed := currentPts - segStartPts
 				if elapsed >= s.config.HlsTime {
@@ -312,7 +353,7 @@ func (s *Slicer) slice() error {
 				fmt.Printf("⚠️ %s 写视频帧错误: %v\n", s.channelID, err)
 			}
 
-			if segmentCount == 0 && keyframeSeen {
+			if segmentCount == 0 {
 				segmentCount = 1
 			}
 		} else if isAudio && audioOutStream != nil {
