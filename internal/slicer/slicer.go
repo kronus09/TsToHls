@@ -181,7 +181,7 @@ func (s *Slicer) slice() error {
 	}
 
 	var segStartPts float64
-	keyframeSeen := false
+	segStartPtsSet := false
 	segmentCount := 0
 
 	pkt := astiav.AllocPacket()
@@ -213,14 +213,9 @@ func (s *Slicer) slice() error {
 		isAudio := inStream.CodecParameters().MediaType() == astiav.MediaTypeAudio
 
 		if isVideo {
-			if !keyframeSeen {
-				if pkt.Flags().Has(astiav.PacketFlagKey) {
-					keyframeSeen = true
-					segStartPts = ptsToSeconds(pkt.Pts(), inStream.TimeBase())
-				} else {
-					pkt.Unref()
-					continue
-				}
+			if !segStartPtsSet {
+				segStartPts = ptsToSeconds(pkt.Pts(), inStream.TimeBase())
+				segStartPtsSet = true
 			}
 
 			if pkt.Flags().Has(astiav.PacketFlagKey) && segmentCount > 0 {
@@ -282,7 +277,7 @@ func (s *Slicer) slice() error {
 				fmt.Printf("⚠️ %s 写视频帧错误: %v\n", s.channelID, err)
 			}
 
-			if segmentCount == 0 && keyframeSeen {
+			if segmentCount == 0 {
 				segmentCount = 1
 			}
 		} else if isAudio && audioOutStream != nil {
