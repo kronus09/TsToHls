@@ -1,0 +1,15 @@
+FROM alpine:3.20 AS builder
+
+RUN apk add --no-cache gcc musl-dev nasm yasm git make pkgconfig coreutils
+
+RUN git clone --depth 1 --branch n8.0 https://github.com/FFmpeg/FFmpeg.git /tmp/ffmpeg && \
+    cd /tmp/ffmpeg && \
+    ./configure --prefix=/opt/ffmpeg --enable-gpl \
+      --enable-shared --disable-static --disable-doc --disable-ffplay \
+      --disable-ffmpeg --disable-ffprobe && \
+    make -j$(nproc) && make install && \
+    rm -rf /tmp/ffmpeg
+
+FROM alpine:3.20
+
+COPY --from=builder /opt/ffmpeg /opt/ffmpeg

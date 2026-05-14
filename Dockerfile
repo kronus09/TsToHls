@@ -1,18 +1,7 @@
 # ===========================================
-# 第一阶段：构建 FFmpeg
+# 第一阶段：获取 FFmpeg 预编译产物
 # ===========================================
-FROM golang:1.22-alpine AS ffmpeg-builder
-
-RUN apk add --no-cache nasm yasm git make gcc musl-dev \
-    pkgconfig coreutils
-
-RUN git clone --depth 1 --branch n8.0 https://github.com/FFmpeg/FFmpeg.git /tmp/ffmpeg && \
-    cd /tmp/ffmpeg && \
-    ./configure --prefix=/opt/ffmpeg --enable-gpl \
-      --enable-shared --disable-static --disable-doc --disable-ffplay \
-      --disable-ffmpeg --disable-ffprobe && \
-    make -j$(nproc) && make install && \
-    rm -rf /tmp/ffmpeg
+FROM ghcr.io/kronus09/tstohls-ffmpeg:n8.0 AS ffmpeg
 
 # ===========================================
 # 第二阶段：构建 Go 程序
@@ -21,7 +10,7 @@ FROM golang:1.22-alpine AS go-builder
 
 RUN apk add --no-cache gcc musl-dev pkgconfig
 
-COPY --from=ffmpeg-builder /opt/ffmpeg /opt/ffmpeg
+COPY --from=ffmpeg /opt/ffmpeg /opt/ffmpeg
 
 ENV CGO_ENABLED=1
 ENV PKG_CONFIG_PATH=/opt/ffmpeg/lib/pkgconfig
@@ -47,7 +36,7 @@ ENV TZ=Asia/Shanghai
 
 WORKDIR /app
 
-COPY --from=ffmpeg-builder /opt/ffmpeg/lib /opt/ffmpeg/lib
+COPY --from=ffmpeg /opt/ffmpeg/lib /opt/ffmpeg/lib
 COPY --from=go-builder /app/tstohls .
 COPY --from=go-builder /app/web ./web
 
