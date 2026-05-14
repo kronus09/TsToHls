@@ -4,12 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>TsToHls 直播预览 | Direct TS</title>
-    <link rel="icon" type="image/png" href="/static/logo.png">
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/png" href="/static/logos/logo.png">
+    <link rel="stylesheet" href="/static/css/style.css">
     <script src="/static/js/lucide.min.js"></script>
     <script src="/static/js/artplayer.js"></script>
     <script src="/static/js/mpegts.min.js"></script>
     <style>
+        body { font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, sans-serif; background-color: #f8fafc; color: #1e293b; overflow-y: auto; }
+        body::-webkit-scrollbar { width: 6px; }
+        body::-webkit-scrollbar-track { background: transparent; }
+        body::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
         .player-wrapper { background-color: #000; border-radius: 1.5rem; overflow: hidden; aspect-ratio: 16/9; width: 100%; }
         .player-wrapper.fullscreen-page { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; aspect-ratio: auto; z-index: 9999; border-radius: 0; }
         .player-container { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-weight: 600; position: relative; }
@@ -40,22 +44,13 @@
         .tab-btn.active { background-color: white; color: #4f46e5; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
         .tab-btn.inactive { color: #64748b; }
         .tab-btn:hover { color: #4f46e5; }
+
+        .no-scrollbar::-webkit-scrollbar { display: none; }
     </style>
 </head>
-<body class="p-4 md:p-8 min-h-screen">
+<body class="p-2 md:p-4 min-h-screen">
     <div class="max-w-6xl mx-auto">
-        <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-10">
-            <div class="flex items-center gap-3 flex-1">
-                <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg"><img src="/static/logo.png" class="w-6 h-6 object-contain"></div>
-                <h1 class="text-xl md:text-2xl font-black tracking-tight">TsToHls <span class="text-indigo-600 text-sm font-mono ml-1">原流播放</span><span class="text-slate-400 text-xs font-normal ml-2">&nbsp;&nbsp;(未经转码，仅PC端支持)</span></h1>
-            </div>
-            <div class="flex bg-slate-100 p-1 rounded-xl shadow-inner flex-shrink-0">
-                <a href="/" class="tab-btn inactive text-sm px-3 py-1.5">系统控制</a>
-                <a href="/?tab=preview" class="tab-btn inactive text-sm px-3 py-1.5">HLS播放</a>
-                <a href="/static/docs/direct-ts.html" class="tab-btn active text-sm px-3 py-1.5">原流播放</a>
-                <a href="/static/docs/usage.html" class="tab-btn inactive text-sm px-3 py-1.5">使用说明</a>
-            </div>
-        </header>
+        <p class="text-xs text-slate-400 font-medium mb-4">未经转码的原流播放，仅 PC 端浏览器支持</p>
 
         <div class="space-y-6">
             <div class="player-wrapper shadow-2xl shadow-indigo-100">
@@ -79,7 +74,7 @@
         };
 
         const loadSourceChannels = () => {
-            fetch('/m3u/source.m3u')
+            fetch('/data/source.m3u')
                 .then(response => response.text())
                 .then(content => {
                     const lines = content.split('\n');
@@ -169,7 +164,7 @@
                 const b = document.createElement('div');
                 b.className = 'channel-btn';
                 b.innerHTML = `
-                    <img src="${ch.logo || '/static/logo.png'}" onerror="this.src='/static/logo.png'">
+                    <img src="${ch.logo || '/static/logos/logo.png'}" onerror="this.src='/static/logos/logo.png'">
                     <span>${ch.name}</span>
                 `;
                 b.onclick = () => playStream(ch);
@@ -329,14 +324,8 @@
             }
         };
 
-        window.onload = init;
+        window.onload = () => { init(); parent.postMessage('resize','*'); };
+        setInterval(() => parent.postMessage('resize','*'), 2000);
     </script>
-    <footer style="margin-top: 2rem; padding-top: 1.5rem; padding-bottom: 2rem; border-top: 1px solid #e2e8f0; text-align: center;">
-        <a href="https://github.com/kronus09/TsToHls" target="_blank" style="display: inline-flex; align-items: center; gap: 0.5rem; text-decoration: none;">
-            <p style="font-size: 10px; font-weight: 900; color: #cbd5e1; text-transform: uppercase; letter-spacing: 0.2em; margin: 0;">Designed by <span style="color: #94a3b8;">KRONUS09</span></p>
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
-        </a>
-        <div style="margin-top: 0.5rem; font-size: 9px; font-weight: 700; color: #cbd5e1; text-transform: uppercase; letter-spacing: 0.1em;">© 2026 TSTOHLS 1.3.2 | OPEN SOURCE PROJECT</div>
-    </footer>
 </body>
 </html>

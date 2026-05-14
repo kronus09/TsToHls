@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>TsToHls 控制台 | Dashboard</title>
-    <link rel="icon" type="image/png" href="/static/logo.png">
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/png" href="/static/logos/logo.png">
+    <link rel="stylesheet" href="/static/css/style.css">
     <script src="/static/js/lucide.min.js"></script>
     <script src="/static/js/artplayer.js"></script>
     <script src="/static/js/hls.min.js"></script>
@@ -24,20 +24,6 @@
         .config-desc { font-size: 10px; color: #94a3b8; font-weight: 500; margin-left: 1.5rem; }
         .config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
         
-        /* Toggle 开关样式 */
-        .toggle-switch { position: relative; width: 36px; height: 20px; flex-shrink: 0; margin-left: 1rem; }
-        .toggle-switch input { opacity: 0; width: 0; height: 0; }
-        .toggle-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #cbd5e1; transition: 0.3s; border-radius: 20px; }
-        .toggle-slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: 0.3s; border-radius: 50%; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
-        .toggle-switch input:checked + .toggle-slider { background-color: #4f46e5; }
-        .toggle-switch input:checked + .toggle-slider:before { transform: translateX(16px); }
-        .toggle-switch input:disabled + .toggle-slider { background-color: #e2e8f0; cursor: default; }
-        .toggle-switch input:disabled + .toggle-slider:before { background-color: #94a3b8; }
-        
-        /* 视频编码标题样式 */
-        .section-title { font-size: 12px; font-weight: 800; color: #334155; display: flex; align-items: center; gap: 0.5rem; }
-        .section-title svg { width: 14px; height: 14px; color: #64748b; }
-
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .player-wrapper { background-color: #000; border-radius: 1.5rem; overflow: hidden; aspect-ratio: 16/9; width: 100%; }
         
@@ -57,14 +43,14 @@
     <div class="max-w-6xl mx-auto">
         <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-10">
             <div class="flex items-center gap-3 flex-1">
-                <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg"><img src="/static/logo.png" class="w-6 h-6 object-contain"></div>
-                <h1 class="text-xl md:text-2xl font-black tracking-tight">TsToHls <span class="text-indigo-600 text-sm font-mono ml-1">1.3.2</span></h1>
+                <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg"><img src="/static/logos/logo.png" class="w-6 h-6 object-contain"></div>
+                <h1 class="text-xl md:text-2xl font-black tracking-tight">TsToHls <span class="text-indigo-600 text-sm font-mono ml-1">1.4.0</span></h1>
             </div>
             <div class="flex bg-slate-100 p-1 rounded-xl shadow-inner flex-shrink-0">
                 <button id="tabConsole" class="tab-btn active text-sm px-3 py-1.5">系统控制</button>
                 <button id="tabPreview" class="tab-btn inactive text-sm px-3 py-1.5">HLS播放</button>
-                <a href="/static/docs/direct-ts.html" class="tab-btn inactive text-sm px-3 py-1.5">原流播放</a>
-                <a href="/static/docs/usage.html" class="tab-btn inactive text-sm px-3 py-1.5">使用说明</a>
+                <button id="tabDirectTs" class="tab-btn inactive text-sm px-3 py-1.5">原流播放</button>
+                <button id="tabUsage" class="tab-btn inactive text-sm px-3 py-1.5">使用说明</button>
             </div>
         </header>
 
@@ -76,7 +62,7 @@
                 </div>
                 <div class="bg-white p-5 rounded-[2rem] border border-slate-100 flex items-center gap-4">
                     <div class="w-10 h-10 bg-indigo-50 text-indigo-500 rounded-xl flex items-center justify-center"><i data-lucide="layers"></i></div>
-                    <div><p class="text-[9px] font-black text-slate-400 uppercase">频道总数</p><h4 class="text-xl font-black"><span id="channelCount">0</span> <small class="text-xs font-medium text-slate-300">路</small></h4></div>
+                    <div><p class="text-[9px] font-black text-slate-400 uppercase">频道可用/总数</p><h4 class="text-xl font-black"><span id="enabledCount" class="text-emerald-500">0</span><span class="text-slate-300 mx-1">/</span><span id="channelCount">0</span> <small class="text-xs font-medium text-slate-300">路</small></h4></div>
                 </div>
                 <div class="bg-white p-5 rounded-[2rem] border border-slate-100 flex items-center gap-4">
                     <div class="w-10 h-10 bg-amber-50 text-amber-500 rounded-xl flex items-center justify-center"><i data-lucide="cpu"></i></div>
@@ -100,14 +86,14 @@
                         </div>
                         <div class="flex flex-col justify-center">
                             <div class="flex items-center justify-between mb-2">
-                                <span class="text-xs font-bold text-slate-600">仅保留 H.264 格式</span>
+                                <span class="text-xs font-bold text-slate-600">验证源可靠性</span>
                                 <label class="relative inline-flex items-center cursor-pointer">
                                     <input type="checkbox" id="checkSourceReliability" class="sr-only peer" checked>
                                     <div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
                                 </label>
                             </div>
                             <p class="text-[10px] text-slate-400 font-normal leading-relaxed">
-                                开启后将只保留 H.264 编码的视频流，提高播放兼容性。
+                                开启后探测源编码，H.264 立即可用，非 H.264 后台补探。关闭则跳过探测全部启用。
                             </p>
                         </div>
                     </div>
@@ -157,18 +143,18 @@
 
             <div class="bg-white rounded-[2.5rem] p-8 border border-slate-100">
                 <div class="flex justify-between items-center mb-6">
-                    <h3 class="font-bold flex items-center gap-2 text-sm uppercase text-slate-600 tracking-wider"><i data-lucide="sliders" class="text-slate-400 w-4"></i>FFMPEG 专家配置</h3>
+                    <h3 class="font-bold flex items-center gap-2 text-sm uppercase text-slate-600 tracking-wider"><i data-lucide="sliders" class="text-slate-400 w-4"></i>切片器配置</h3>
                     <button id="expertModeBtn" class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg">编辑配置</button>
                 </div>
                 <form id="configForm" class="grid grid-cols-1 md:grid-cols-2 gap-x-12">
                     <div class="config-row">
-                        <span class="config-label">最大并发进程</span>
+                        <span class="config-label">最大并发</span>
                         <select name="max_processes" class="config-select" disabled>
                             <option value="2">2</option><option value="3">3</option><option value="4">4</option>
                             <option value="5">5</option><option value="6">6</option><option value="7">7</option>
                             <option value="8">8</option>
                         </select>
-                        <span class="config-desc">最大转换路数</span>
+                        <span class="config-desc">最大切片路数</span>
                     </div>
                     <div class="config-row">
                         <span class="config-label">切片时长</span>
@@ -206,50 +192,17 @@
                         </select>
                         <span class="config-desc">断流重试间隔</span>
                     </div>
+                    <div class="config-row">
+                        <span class="config-label">关键帧等待</span>
+                        <select name="keyframe_wait_ms" class="config-select" disabled>
+                            <option value="2000">2s</option><option value="3000">3s</option><option value="5000">5s</option>
+                            <option value="8000">8s</option><option value="10000">10s</option>
+                        </select>
+                        <span class="config-desc">首帧对齐超时</span>
+                    </div>
                     <div class="config-row"><span class="config-label">音频编码器</span><select name="audio_codec" class="config-select" disabled><option value="copy">copy</option><option value="aac">aac (推荐)</option></select><span class="config-desc">建议用 aac</span></div>
                     <div class="config-row"><span class="config-label">音频码流</span><select name="audio_bitrate" class="config-select" disabled><option value="64k">64k</option><option value="96k">96k</option><option value="128k">128k</option><option value="192k">192k</option><option value="256k">256k</option></select><span class="config-desc">音频质量</span></div>
-                    <div class="config-row">
-                        <span class="config-label">HLS临时目录</span>
-                        <select name="hls_temp_dir" class="config-select" disabled>
-                            <option value="">hls_temp (默认)</option>
-                            <option value="/tmp/hls_temp">/tmp/hls_temp</option>
-                            <option value="/dev/shm/hls_temp">/dev/shm/hls_temp (tmpfs)</option>
-                        </select>
-                        <span class="config-desc">tmpfs加速</span>
-                    </div>
-                    <div class="config-row">
-                        <span class="config-label">低延迟模式</span>
-                        <select name="low_latency_mode" class="config-select" disabled>
-                            <option value="true">启用</option>
-                            <option value="false">禁用</option>
-                        </select>
-                        <span class="config-desc">减少缓冲延迟</span>
-                    </div>
                 </form>
-                <div class="border-t border-slate-100 my-4 pt-4">
-                    <div class="config-row" style="border-bottom: none;">
-                        <span class="section-title">
-                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
-                            视频编码
-                        </span>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="enable_video_transcode" disabled>
-                            <span class="toggle-slider"></span>
-                        </label>
-                        <span id="transcodeWarning" class="config-desc text-amber-600 hidden">⚠️ NAS设备CPU较弱，视频转码可能导致系统卡顿</span>
-                    </div>
-                    <div id="transcodeOptions" class="hidden mt-2 grid grid-cols-1 md:grid-cols-2 gap-x-12">
-                        <div class="config-row"><span class="config-label">视频编码器</span><select name="video_codec" class="config-select" disabled><option value="libx264">libx264 (CPU)</option><option value="h264_nvenc">h264_nvenc (NVIDIA)</option><option value="h264_qsv">h264_qsv (Intel)</option><option value="h264_vaapi">h264_vaapi (VAAPI)</option></select><span class="config-desc">GPU加速推荐</span></div>
-                        <div class="config-row"><span class="config-label">视频分辨率</span><select name="video_resolution" class="config-select" disabled><option value="keep">保持原分辨率</option><option value="1920x1080">1080p</option><option value="1280x720">720p</option><option value="854x480">480p</option><option value="640x360">360p</option></select><span class="config-desc">降低分辨率省带宽</span></div>
-                        <div class="config-row"><span class="config-label">视频码流</span><select name="video_bitrate" class="config-select" disabled><option value="1M">1M</option><option value="2M">2M</option><option value="3M">3M</option><option value="4M">4M</option><option value="5M">5M</option><option value="8M">8M</option></select><span class="config-desc">码流越低越省带宽</span></div>
-                        <div class="config-row"><span class="config-label">封装格式</span><select name="hls_segment_type" class="config-select" disabled><option value="mpegts">mpegts</option><option value="fmp4">fmp4</option></select><span class="config-desc">TS/fMP4</span></div>
-                        <div class="config-row" style="border-bottom: none;">
-                            <span class="config-label">自定义参数</span>
-                            <input type="text" name="custom_ffmpeg_args" class="config-input" disabled placeholder="-hwaccel cuda" style="width: 200px; padding: 4px 8px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 11px;">
-                            <span class="config-desc">GPU加速等参数</span>
-                        </div>
-                    </div>
-                </div>
                 <div id="configActions" class="mt-8 flex gap-3 hidden">
                     <button id="resetConfigBtn" type="button" class="px-6 py-2 bg-slate-100 text-slate-500 rounded-xl font-bold text-xs">恢复默认</button>
                     <button id="saveConfigBtn" type="button" class="px-6 py-2 bg-indigo-600 text-white rounded-xl font-bold text-xs shadow-lg">保存设置</button>
@@ -263,14 +216,35 @@
             <div id="channelGrid" class="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-3 pb-6"></div>
         </div>
 
+        <div id="directTsPage" class="hidden">
+            <iframe id="directTsFrame" src="/pages/direct-ts.html" class="w-full border-0 rounded-[1.5rem]" scrolling="no" onload="resizeIframe(this)"></iframe>
+        </div>
+
+        <div id="usagePage" class="hidden">
+            <iframe id="usageFrame" src="/pages/usage.html" class="w-full border-0 rounded-[1.5rem]" scrolling="no" onload="resizeIframe(this)"></iframe>
+        </div>
+
         <footer class="mt-8 pt-6 pb-8 border-t border-slate-100 text-center">
             <a href="https://github.com/kronus09/TsToHls" target="_blank" class="inline-flex items-center gap-2 group transition-all">
                 <p class="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] group-hover:text-indigo-600 transition-colors">Designed by <span class="text-slate-400">KRONUS09</span></p>
                 <i data-lucide="github" class="w-4 h-4 text-slate-300 group-hover:text-indigo-600 transition-colors"></i>
             </a>
-            <div class="mt-2 text-[9px] font-bold text-slate-300 uppercase tracking-widest">© 2026 TSTOHLS 1.3.2 | OPEN SOURCE PROJECT</div>
+            <div class="mt-2 text-[9px] font-bold text-slate-300 uppercase tracking-widest">© 2026 TSTOHLS 1.4.0 | OPEN SOURCE PROJECT</div>
         </footer>
     </div>
+    <script>
+        function resizeIframe(frame) {
+            try {
+                const doc = frame.contentDocument || frame.contentWindow.document;
+                frame.style.height = doc.documentElement.scrollHeight + 'px';
+            } catch(e) {}
+        }
+        window.addEventListener('message', (e) => {
+            if (e.data === 'resize') {
+                document.querySelectorAll('iframe').forEach(f => resizeIframe(f));
+            }
+        });
+    </script>
     <script src="/static/js/app.js"></script>
 </body>
 </html>

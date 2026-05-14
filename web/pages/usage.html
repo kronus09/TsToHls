@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TsToHls 使用说明 | Usage Guide</title>
+    <link rel="icon" type="image/png" href="/static/logos/logo.png">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        body { font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, sans-serif; background-color: #f8fafc; color: #1e293b; overflow-y: auto; }
+        body::-webkit-scrollbar { width: 6px; }
+        body::-webkit-scrollbar-track { background: transparent; }
+        body::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .content { display: flex; gap: 2rem; }
+        .sidebar { width: 250px; flex-shrink: 0; position: sticky; top: 2rem; height: fit-content; }
+        .main { flex: 1; }
+        .toc { background: white; border-radius: 1.5rem; padding: 1.5rem; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .toc h2 { font-size: 1rem; font-weight: 700; color: #1e293b; margin-bottom: 1rem; }
+        .toc ul { list-style: none; padding: 0; }
+        .toc li { margin-bottom: 0.5rem; }
+        .toc a { color: #64748b; text-decoration: none; font-size: 0.875rem; display: block; padding: 0.25rem 0; transition: color 0.2s; }
+        .toc a:hover { color: #4f46e5; }
+        .card { background: white; border-radius: 1.5rem; padding: 2rem; margin-bottom: 1.5rem; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        h2 { font-size: 1.25rem; font-weight: 700; color: #1e293b; margin-top: 0; margin-bottom: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem; }
+        h3 { font-size: 1rem; font-weight: 700; color: #475569; margin-top: 1rem; margin-bottom: 0.5rem; }
+        p { line-height: 1.6; margin-bottom: 1rem; color: #64748b; }
+        ul { margin-bottom: 1rem; padding-left: 1.5rem; color: #64748b; }
+        li { margin-bottom: 0.5rem; line-height: 1.5; }
+        .step { background: #f8fafc; border-radius: 0.5rem; padding: 1rem; margin-bottom: 1rem; border-left: 4px solid #4f46e5; }
+        .note { background: #fffbeb; border-left: 4px solid #f59e0b; padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem; color: #92400e; }
+        .warning { background: #fef2f2; border-left: 4px solid #ef4444; padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem; color: #991b1b; }
+        code { background: #f1f5f9; padding: 0.25rem 0.5rem; border-radius: 0.25rem; font-family: 'Courier New', Courier, monospace; font-size: 0.875rem; }
+        @media (max-width: 768px) {
+            .content { flex-direction: column; }
+            .sidebar { width: 100%; position: static; }
+        }
+    </style>
+</head>
+<body class="p-2 md:p-4 min-h-screen">
+    <div class="max-w-6xl mx-auto">
+        <div class="content">
+            <div class="sidebar">
+                <div class="toc">
+                    <h2>目录</h2>
+                    <ul>
+                        <li><a href="#overview">概述</a></li>
+                        <li><a href="#installation">安装</a></li>
+                        <li><a href="#quick-start">快速开始</a></li>
+                        <li><a href="#features">功能说明</a></li>
+                        <li><a href="#experimental">原流播放</a></li>
+                        <li><a href="#faq">常见问题</a></li>
+                        <li><a href="#advanced">切片器配置</a></li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="main">
+                <div class="card" id="overview">
+                    <h2>概述</h2>
+                    <p>TsToHls 是一个将 M3U 播放列表转换为 HLS 格式的工具，支持将直播源转换为可在浏览器和各种播放器中播放的 HLS 流。</p>
+                    <p>v1.4.0 采用进程内切片架构（go-astiav），替代了外部 FFmpeg 进程调用，实现关键帧对齐快速启动、SegmentStore 内存直出零磁盘 IO、音频实时转码（mp2 → aac）。</p>
+                </div>
+
+                <div class="card" id="installation">
+                    <h2>系统安装</h2>
+                    <p>使用 Docker Compose 来部署 TsToHls，这样可以更方便地管理依赖和环境。</p>
+
+                    <h3>1. 创建 docker-compose.yml 文件</h3>
+                    <p>在您的项目目录中创建一个 <code>docker-compose.yml</code> 文件，内容如下：</p>
+                    <div class="step">
+                        <pre><code>services:
+  tstohls:
+    image: ghcr.io/kronus09/tstohls:latest
+    container_name: tstohls
+    restart: unless-stopped
+    ports:
+      - "15140:15140"
+    volumes:
+      # 数据持久化目录（数据库、配置、M3U文件、图标）
+      - ./data:/app/data
+    environment:
+      - TZ=Asia/Shanghai
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"</code></pre>
+                    </div>
+
+                    <h3>2. 启动服务</h3>
+                    <div class="step">
+                        <code>docker-compose up -d</code>
+                    </div>
+
+                    <h3>3. 访问管理界面</h3>
+                    <p>服务启动后，您可以在浏览器中访问 <code>http://localhost:15140</code> 打开管理界面。</p>
+
+                    <div class="note">
+                        <strong>注意：</strong> 使用 Docker 部署时，需要确保您的系统已经安装了 Docker 和 Docker Compose。
+                    </div>
+                </div>
+
+                <div class="card" id="quick-start">
+                    <h2>快速开始</h2>
+                    <p>服务启动后，您可以通过以下地址访问 TsToHls：</p>
+                    <div class="step">
+                        <p><strong>管理界面：</strong> <code>http://[服务器IP]:15140</code></p>
+                        <p><strong>订阅地址：</strong> <code>http://[服务器IP]:15140/playlist/tstohls.m3u</code></p>
+                    </div>
+                </div>
+
+                <div class="card" id="features">
+                    <h2>功能说明</h2>
+
+                    <h3>数据导入</h3>
+                    <p>支持本地 M3U 文件上传和远程订阅地址导入，自动解析并转换为 HLS 格式。</p>
+                    <p>提供「验证源可靠性」开关：开启时探测源编码，H.264 立即可用，非 H.264 后台异步补探；关闭时也探测但全部启用。</p>
+
+                    <h3>系统监控</h3>
+                    <p>管理界面顶部显示：活跃切片路数、频道可用/总数（绿色/灰色）、CPU 占用、内存使用。</p>
+
+                    <h3>切片器配置</h3>
+                    <p>点击「编辑配置」按钮，可调整切片器参数。建议保持默认配置。</p>
+
+                    <h3>订阅地址</h3>
+                    <p>生成的 HLS 订阅地址可在 PotPlayer、VLC、IINA、nPlayer 等支持 HLS 的播放器中使用。</p>
+                </div>
+
+                <div class="card" id="experimental">
+                    <h2>原流播放</h2>
+
+                    <p>实验性功能，允许直接在浏览器中播放原始 M3U 源中的 TS 流，无需转码切片。</p>
+
+                    <h3>功能特点</h3>
+                    <ul>
+                        <li><strong>更低延迟</strong>：直接播放原始 TS 流，省去转码和切片时间</li>
+                        <li><strong>源对照</strong>：可用于验证原始源是否可用，排查转换问题</li>
+                    </ul>
+
+                    <h3>使用方式</h3>
+                    <p>点击顶部选项卡的「原流播放」即可进入原流播放页面。</p>
+
+                    <h3>技术原理</h3>
+                    <p>使用 <a href="https://github.com/xqq/mpegts.js" target="_blank">mpegts.js</a> 库在浏览器中直接解析和播放 MPEG-TS 流，通过 Media Source Extensions (MSE) 技术实现。</p>
+
+                    <div class="warning">
+                        <strong>兼容性提示：</strong> 此功能未经转码，仅PC端浏览器支持。移动设备请使用 HLS 播放。
+                    </div>
+                </div>
+
+                <div class="card" id="faq">
+                    <h2>常见问题</h2>
+
+                    <h3>1. 导入失败怎么办？</h3>
+                    <p>请检查 M3U 文件格式是否正确，或订阅地址是否可访问。</p>
+
+                    <h3>2. 播放时出现卡顿怎么办？</h3>
+                    <p>可以尝试调整切片器配置中的切片时长和列表容量，或增加服务器网络带宽。</p>
+
+                    <h3>3. 如何更新源？</h3>
+                    <p>直接点击「上传并转换」按钮，系统会从订阅地址重新拉取最新的源并重新探测。</p>
+
+                    <h3>4. 支持哪些播放器？</h3>
+                    <ul>
+                        <li>桌面端：PotPlayer、VLC、IINA、MPV</li>
+                        <li>移动端：nPlayer、Fileball、APM、Kodi</li>
+                        <li>浏览器：Chrome、Firefox、Safari</li>
+                    </ul>
+                </div>
+
+                <div class="card" id="advanced">
+                    <h2>切片器配置</h2>
+
+                    <p>v1.4.0 使用进程内切片架构，配置项如下：</p>
+                    <ul>
+                        <li><strong>最大并发</strong>：同时切片的最大路数（默认 6）</li>
+                        <li><strong>切片时长</strong>：每个 TS 分片的时长，单位秒（默认 1）</li>
+                        <li><strong>列表容量</strong>：M3U8 中保留的切片数（默认 4）</li>
+                        <li><strong>闲置超时</strong>：无访问后自动释放切片器的秒数（默认 120）</li>
+                        <li><strong>重连延迟</strong>：断流后重试间隔秒数（默认 5）</li>
+                        <li><strong>关键帧等待</strong>：首次请求等待关键帧对齐的超时毫秒数（默认 5000）</li>
+                        <li><strong>音频编码器</strong>：<code>aac</code>（推荐，实时转码 mp2→aac）或 <code>copy</code>（直接复制）</li>
+                        <li><strong>音频码流</strong>：AAC 编码码率，可选 64k / 96k / 128k / 192k / 256k</li>
+                    </ul>
+
+                    <div class="note">
+                        <strong>架构说明：</strong> 切片器在进程内运行（go-astiav + CGO），视频流直接 copy，音频实时转码为 AAC。HLS 切片数据存储在内存中（SegmentStore），HTTP 请求直接读取内存返回，零磁盘 IO。关键帧对齐机制确保首帧快速启动，跳过非关键帧直到最近的 IDR 帧再开始切片。
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>window.onload = () => parent.postMessage('resize','*');</script>
+</body>
+</html>

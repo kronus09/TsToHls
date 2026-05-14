@@ -3,14 +3,24 @@
 # ===========================================
 FROM golang:1.23-alpine AS builder
 
-# 设置 Go 环境
-ENV CGO_ENABLED=0 GOOS=linux
+RUN apk add --no-cache gcc musl-dev nasm yasm git make
+
+ENV CGO_ENABLED=1
 WORKDIR /app
 
-# 优化点：使用通配符拷贝 go.mod 和 go.sum（如果存在）
-# 这样即使没有第三方依赖导致缺少 go.sum，构建也不会失败
+RUN git clone --depth 1 --branch n8.0 https://github.com/FFmpeg/FFmpeg.git /tmp/ffmpeg && \
+    cd /tmp/ffmpeg && \
+    ./configure --prefix=/opt/ffmpeg --enable-gpl --enable-libx264 \
+      --enable-shared --disable-static --disable-doc --disable-ffplay \
+      --enable-ffmpeg --enable-ffprobe && \
+    make -j$(nproc) && make install && \
+    rm -rf /tmp/ffmpeg
+
+ENV PKG_CONFIG_PATH=/opt/ffmpeg/lib/pkgconfig
+ENV CGO_CFLAGS="-I/opt/ffmpeg/include"
+ENV CGO_LDFLAGS="-L/opt/ffmpeg/lib -Wl,-rpath,/opt/ffmpeg/lib"
+
 COPY go.mod go.sum* ./
-# 只有当 go.mod 包含依赖时才运行下载
 RUN if [ -f go.sum ]; then go mod download; fi
 
 COPY . .
@@ -21,26 +31,22 @@ RUN go build -o tstohls .
 # ===========================================
 FROM alpine:latest
 
-# 安装 FFmpeg (含ffprobe) 和 基础证书
-RUN apk add --no-cache ffmpeg ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata
 
-# 设置时区为上海
 ENV TZ=Asia/Shanghai
 
 WORKDIR /app
 
-# 拷贝构建好的二进制文件
+COPY --from=builder /opt/ffmpeg/lib /opt/ffmpeg/lib
+COPY --from=builder /opt/ffmpeg/bin/ffmpeg /usr/bin/ffmpeg
+COPY --from=builder /opt/ffmpeg/bin/ffprobe /usr/bin/ffprobe
+RUN echo "/opt/ffmpeg/lib" > /etc/ld-musl-x86_64.path
+
 COPY --from=builder /app/tstohls .
-# 拷贝静态资源
 COPY --from=builder /app/web ./web
 
-# --- 创建符合最新逻辑的目录 ---
-# 1. m3u/logos: 存放频道图标
-# 2. hls_temp: 存放 FFmpeg 实时生成的切片文件
-RUN mkdir -p ./m3u/logos ./hls_temp && chmod -R 777 ./m3u ./hls_temp
+RUN mkdir -p ./data/logos && chmod -R 777 ./data
 
-# 暴露端口
 EXPOSE 15140
 
-# 启动命令
 CMD ["./tstohls"]

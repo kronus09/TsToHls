@@ -1,6 +1,6 @@
 /**
  * TsToHls Dashboard Core Logic
- * Version: 1.2.2
+ * Version: 1.4.0
  * Optimized for local deployment, fixed drag-and-drop bug and clipboard compatibility.
  */
 
@@ -11,18 +11,64 @@ let currentHls = null;
 let isExpertMode = false;
 
 const init = () => {
-    // 初始化图标
     if (window.lucide) {
         lucide.createIcons();
     }
-    setupTabs();
-    setupDragAndDrop();
-    loadListFromServer();
-    loadConfigFromServer();
-    checkSourceFile();
-    // 每3秒更新一次资源占用
-    setInterval(checkStatus, 3000);
+    checkMigration().then(() => {
+        setupTabs();
+        setupDragAndDrop();
+        document.getElementById('m3uUrl').value = `${window.location.origin}/playlist/tstohls.m3u`;
+        loadListFromServer();
+        loadConfigFromServer();
+        checkSourceFile();
+        setInterval(checkStatus, 3000);
+    });
+
+    document.getElementById('checkSourceReliability').addEventListener('change', async (e) => {
+        try {
+            const res = await fetch('/api/config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ check_source_reliability: e.target.checked })
+            });
+            if (!res.ok) e.target.checked = !e.target.checked;
+        } catch (err) {
+            e.target.checked = !e.target.checked;
+        }
+    });
 };
+
+async function checkMigration() {
+    try {
+        const r = await fetch('/api/status');
+        const d = await r.json();
+        if (d.migration_status === 'migrating') {
+            const overlay = document.createElement('div');
+            overlay.id = 'migrationOverlay';
+            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,0.95);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;';
+            overlay.innerHTML = `
+                <div style="text-align:center;">
+                    <div style="width:48px;height:48px;border:4px solid #e2e8f0;border-top-color:#4f46e5;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 24px;"></div>
+                    <p style="color:#f8fafc;font-size:18px;font-weight:700;margin-bottom:12px;">系统升级中</p>
+                    <p style="color:#94a3b8;font-size:14px;">正在转换历史数据，请稍候...</p>
+                </div>
+                <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+            `;
+            document.body.appendChild(overlay);
+
+            while (true) {
+                await new Promise(r => setTimeout(r, 2000));
+                const rr = await fetch('/api/status');
+                const dd = await rr.json();
+                if (dd.migration_status !== 'migrating') {
+                    const el = document.getElementById('migrationOverlay');
+                    if (el) el.remove();
+                    break;
+                }
+            }
+        }
+    } catch (e) {}
+}
 
 // 检查source.m3u文件是否存在，并提取订阅地址
     const checkSourceFile = () => {
@@ -52,29 +98,42 @@ const init = () => {
 const setupTabs = () => {
     const btnC = document.getElementById('tabConsole');
     const btnP = document.getElementById('tabPreview');
+    const btnD = document.getElementById('tabDirectTs');
+    const btnU = document.getElementById('tabUsage');
     const pageC = document.getElementById('consolePage');
     const pageP = document.getElementById('previewPage');
+    const pageD = document.getElementById('directTsPage');
+    const pageU = document.getElementById('usagePage');
 
-    const switchTab = (toConsole) => {
-        btnC.className = toConsole ? "tab-btn active" : "tab-btn inactive";
-        btnP.className = !toConsole ? "tab-btn active" : "tab-btn inactive";
-        pageC.classList.toggle('hidden', !toConsole);
-        pageP.classList.toggle('hidden', toConsole);
+    const allBtns = [btnC, btnP, btnD, btnU];
+    const allPages = [pageC, pageP, pageD, pageU];
 
-        if (!toConsole) {
-            // 预览页显示时重新计算播放器尺寸
+    const switchTab = (index) => {
+        allBtns.forEach((btn, i) => {
+            btn.className = i === index ? "tab-btn active text-sm px-3 py-1.5" : "tab-btn inactive text-sm px-3 py-1.5";
+        });
+        allPages.forEach((page, i) => {
+            page.classList.toggle('hidden', i !== index);
+        });
+
+        if (index === 1) {
             setTimeout(() => { if(art) art.resize(); }, 150);
             renderPreview();
         }
     };
 
-    btnC.onclick = () => switchTab(true);
-    btnP.onclick = () => switchTab(false);
+    btnC.onclick = () => switchTab(0);
+    btnP.onclick = () => switchTab(1);
+    btnD.onclick = () => switchTab(2);
+    btnU.onclick = () => switchTab(3);
 
-    // 检查URL参数，自动切换到直播预览
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('tab') === 'preview') {
-        switchTab(false);
+        switchTab(1);
+    } else if (urlParams.get('tab') === 'directts') {
+        switchTab(2);
+    } else if (urlParams.get('tab') === 'usage') {
+        switchTab(3);
     }
 };
 
@@ -116,7 +175,7 @@ const renderPreview = () => {
         const b = document.createElement('div');
         b.className = 'channel-btn'; 
         b.innerHTML = `
-            <img src="${ch.logo || '/static/logo.png'}" onerror="this.src='/static/logo.png'">
+            <img src="${ch.logo || '/static/logos/logo.png'}" onerror="this.src='/static/logos/logo.png'">
             <span>${ch.name}</span>
         `;
         b.onclick = () => playStream(ch);
@@ -203,9 +262,12 @@ async function loadListFromServer() {
         if (document.getElementById('channelCount')) {
             document.getElementById('channelCount').textContent = channels.length;
         }
+        if (document.getElementById('enabledCount')) {
+            const enabled = channels.filter(c => c.enabled !== false).length;
+            document.getElementById('enabledCount').textContent = enabled;
+        }
 
         if (channels.length) {
-            document.getElementById('m3uUrl').value = `${window.location.origin}/playlist/tstohls.m3u`;
             renderPreview();
         }
     } catch (e) {
@@ -243,13 +305,6 @@ async function loadConfigFromServer() {
                 }
             }
         });
-        
-        const enableTranscode = document.getElementById('enable_video_transcode');
-        if (enableTranscode && config.enable_video_transcode !== undefined) {
-            enableTranscode.checked = config.enable_video_transcode;
-        }
-        
-        updateTranscodeVisibility();
     } catch (e) {}
 }
 
@@ -258,74 +313,23 @@ document.getElementById('expertModeBtn').onclick = () => {
     const inputs = document.querySelectorAll('#configForm select, #configForm input');
     inputs.forEach(i => i.disabled = !isExpertMode);
     
-    const transcodeInputs = document.querySelectorAll('#transcodeOptions select, #transcodeOptions input');
-    transcodeInputs.forEach(i => i.disabled = !isExpertMode);
-    
-    document.getElementById('enable_video_transcode').disabled = !isExpertMode;
-    
     document.getElementById('configActions').classList.toggle('hidden', !isExpertMode);
     document.getElementById('expertModeBtn').textContent = isExpertMode ? "取消修改" : "编辑配置";
-    
-    if (!isExpertMode) {
-        document.getElementById('enable_video_transcode').checked = false;
-    }
-    
-    updateTranscodeVisibility();
 };
-
-function updateTranscodeVisibility() {
-    const enableTranscode = document.getElementById('enable_video_transcode');
-    const warning = document.getElementById('transcodeWarning');
-    const options = document.getElementById('transcodeOptions');
-    
-    if (enableTranscode.checked) {
-        warning.classList.remove('hidden');
-        options.classList.remove('hidden');
-    } else {
-        warning.classList.add('hidden');
-        options.classList.add('hidden');
-    }
-}
-
-document.getElementById('enable_video_transcode').onchange = function() {
-    if (this.checked) {
-        const confirmed = confirm(
-            '⚠️ 视频转码风险提示\n\n' +
-            'NAS设备CPU较弱，视频转码会占用大量CPU资源，可能导致系统卡顿。\n\n' +
-            '建议：\n' +
-            '• 使用 copy 模式直接复制视频流\n' +
-            '• 如需转码，请确保设备支持GPU加速\n\n' +
-            '确定要开启视频转码吗？'
-        );
-        if (!confirmed) {
-            this.checked = false;
-        }
-    }
-    updateTranscodeVisibility();
-};
-
 document.getElementById('saveConfigBtn').onclick = async () => {
     try {
-        const existingRes = await fetch('/api/config');
-        const existingConfig = await existingRes.json();
-        
         const fd = new FormData(document.getElementById('configForm'));
         const formData = Object.fromEntries(fd.entries());
         
-        formData.enable_video_transcode = document.getElementById('enable_video_transcode').checked;
-        
-        const numKeys = ['max_processes', 'hls_time', 'hls_list_size', 'idle_timeout', 'reconnect_delay'];
+        const numKeys = ['max_processes', 'hls_time', 'hls_list_size', 'idle_timeout', 'reconnect_delay', 'keyframe_wait_ms'];
         numKeys.forEach(k => { if(formData[k]) formData[k] = parseInt(formData[k]); });
         
-        const boolKeys = ['low_latency_mode', 'check_source_reliability'];
-        boolKeys.forEach(k => { if(formData[k]) formData[k] = formData[k] === 'true'; });
-
-        const mergedConfig = { ...existingConfig, ...formData };
+        formData.check_source_reliability = document.getElementById('checkSourceReliability').checked;
 
         const res = await fetch('/api/config', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(mergedConfig)
+            body: JSON.stringify(formData)
         });
         if(res.ok) {
             alert("配置已更新，服务将重启应用新参数");

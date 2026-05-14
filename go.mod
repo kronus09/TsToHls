@@ -2,10 +2,15 @@ module tstohls
 
 go 1.22.0
 
-require github.com/shirou/gopsutil/v3 v3.24.5
+require (
+	github.com/asticode/go-astiav v0.40.0
+	github.com/fsnotify/fsnotify v1.9.0
+	github.com/mattn/go-sqlite3 v1.14.44
+	github.com/shirou/gopsutil/v3 v3.24.5
+)
 
 require (
-	github.com/fsnotify/fsnotify v1.9.0 // indirect
+	github.com/asticode/go-astikit v0.42.0 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
