@@ -59,7 +59,7 @@
                 <div class="card" id="overview">
                     <h2>概述</h2>
                     <p>TsToHls 是一个将 M3U 播放列表转换为 HLS 格式的工具，支持将直播源转换为可在浏览器和各种播放器中播放的 HLS 流。</p>
-                    <p>v1.4.1 采用进程内切片架构（go-astiav），替代了外部 FFmpeg 进程调用，实现首帧快速启动、SegmentStore 内存直出零磁盘 IO、音频实时转码（mp2 → aac）。</p>
+                    <p>v1.4.2 采用进程内切片架构（go-astiav），替代了外部 FFmpeg 进程调用，实现首帧快速启动、SegmentStore 内存直出零磁盘 IO、音频实时转码（mp2 → aac）。</p>
                 </div>
 
                 <div class="card" id="installation">
@@ -172,7 +172,7 @@
                 <div class="card" id="advanced">
                     <h2>切片器配置</h2>
 
-                    <p>v1.4.1 使用进程内切片架构，配置项如下：</p>
+                    <p>v1.4.2 使用进程内切片架构，配置项如下：</p>
                     <ul>
                         <li><strong>最大并发</strong>：同时切片的最大路数（默认 6）</li>
                         <li><strong>切片时长</strong>：每个 TS 分片的时长，单位秒（默认 1）</li>

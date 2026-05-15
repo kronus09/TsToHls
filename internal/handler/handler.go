@@ -508,3 +508,122 @@ func ChannelSetEnabledHandler(w http.ResponseWriter, r *http.Request) {
 		"id":      req.ID,
 	})
 }
+
+func PeerHandshakeHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	json.NewEncoder(w).Encode(map[string]any{
+		"name":         "TsToHls",
+		"version":      "1.4.2",
+		"capabilities": []string{"hls_slicer", "live_playlist"},
+	})
+}
+
+func PeerPushPlaylistHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "仅支持 POST", 405)
+		return
+	}
+
+	var req struct {
+		PlaylistURL string `json:"playlist_url"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "无效请求数据", 400)
+		return
+	}
+
+	fmt.Printf("📥 收到推送订阅地址: %s\n", req.PlaylistURL)
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+func FluvaCheckHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	var req struct {
+		URL string `json:"url"`
+	}
+	json.NewDecoder(r.Body).Decode(&req)
+
+	fluvaURL := req.URL
+	if fluvaURL == "" {
+		fluvaURL = PM.Config.PeerURL
+	}
+	if fluvaURL == "" {
+		host := r.Host
+		if idx := strings.LastIndex(host, ":"); idx != -1 {
+			host = host[:idx]
+		}
+		fluvaURL = "http://" + host + ":20505"
+	}
+
+	client := http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get(fluvaURL + "/api/peer/handshake")
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]any{
+			"online": false,
+			"url":    fluvaURL,
+		})
+		return
+	}
+	defer resp.Body.Close()
+
+	var peer map[string]any
+	json.NewDecoder(resp.Body).Decode(&peer)
+
+	json.NewEncoder(w).Encode(map[string]any{
+		"online": true,
+		"url":    fluvaURL,
+		"peer":   peer,
+	})
+}
+
+func FluvaPushHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	var req struct {
+		URL string `json:"url"`
+	}
+	json.NewDecoder(r.Body).Decode(&req)
+
+	fluvaURL := req.URL
+	if fluvaURL == "" {
+		fluvaURL = PM.Config.PeerURL
+	}
+	if fluvaURL == "" {
+		host := r.Host
+		if idx := strings.LastIndex(host, ":"); idx != -1 {
+			host = host[:idx]
+		}
+		fluvaURL = "http://" + host + ":20505"
+	}
+
+	hlsPlaylistURL := fmt.Sprintf("http://%s/playlist/tstohls.m3u", r.Host)
+	tsPlaylistURL := fmt.Sprintf("http://%s/data/source.m3u", r.Host)
+
+	client := http.Client{Timeout: 5 * time.Second}
+	body, _ := json.Marshal(map[string]string{
+		"hls_playlist_url": hlsPlaylistURL,
+		"ts_playlist_url":  tsPlaylistURL,
+	})
+	resp, err := client.Post(fluvaURL+"/api/peer/push/playlist", "application/json", strings.NewReader(string(body)))
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		})
+		return
+	}
+	defer resp.Body.Close()
+
+	json.NewEncoder(w).Encode(map[string]any{
+		"ok":               true,
+		"hls_playlist_url": hlsPlaylistURL,
+		"ts_playlist_url":  tsPlaylistURL,
+	})
+}

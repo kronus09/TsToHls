@@ -44,7 +44,7 @@
         <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-10">
             <div class="flex items-center gap-3 flex-1">
                 <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg"><img src="/static/logos/logo.png" class="w-6 h-6 object-contain"></div>
-                <h1 class="text-xl md:text-2xl font-black tracking-tight">TsToHls <span class="text-indigo-600 text-sm font-mono ml-1">1.4.1</span></h1>
+                <h1 class="text-xl md:text-2xl font-black tracking-tight">TsToHls <span class="text-indigo-600 text-sm font-mono ml-1">1.4.2</span></h1>
             </div>
             <div class="flex bg-slate-100 p-1 rounded-xl shadow-inner flex-shrink-0">
                 <button id="tabConsole" class="tab-btn active text-sm px-3 py-1.5">系统控制</button>
@@ -129,13 +129,17 @@
                     
                     <div class="mt-auto pt-6">
                         <div class="p-5 rounded-xl bg-slate-50 border border-slate-100">
-                            <div class="flex items-center gap-2 text-slate-600 font-bold text-xs">
-                                <i data-lucide="info" class="w-4 h-4 flex-shrink-0"></i>
-                                功能已迁移
+                            <div class="flex items-center justify-between text-slate-600 font-bold text-xs">
+                                <div class="flex items-center gap-2">
+                                    <i data-lucide="radio" class="w-4 h-4 flex-shrink-0"></i>
+                                    直播源推送至 <a href="https://github.com/kronus09/Fluva-homepage" target="_blank" class="text-indigo-600 hover:underline">Fluva</a> 聚合
+                                </div>
+                                <span id="fluvaStatus" class="text-[10px] text-slate-400 font-normal"></span>
                             </div>
-                            <p class="text-[10px] text-slate-500 font-normal mt-2 leading-relaxed">
-                                原流播放功能已迁移到上方选项卡，点击 <strong>原流播放</strong> 选项卡即可使用。
-                            </p>
+                            <div class="mt-8 flex gap-2">
+                                <input type="text" id="fluvaUrl" class="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-mono hidden" placeholder="http://fluva:20505">
+                                <button id="fluvaPushBtn" class="bg-indigo-600 text-white font-bold text-xs px-4 py-1.5 rounded-lg shadow active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed" disabled>推送</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -221,7 +225,7 @@
                 <p class="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] group-hover:text-indigo-600 transition-colors">Designed by <span class="text-slate-400">KRONUS09</span></p>
                 <i data-lucide="github" class="w-4 h-4 text-slate-300 group-hover:text-indigo-600 transition-colors"></i>
             </a>
-            <div class="mt-2 text-[9px] font-bold text-slate-300 uppercase tracking-widest">© 2026 TSTOHLS 1.4.1 | OPEN SOURCE PROJECT</div>
+            <div class="mt-2 text-[9px] font-bold text-slate-300 uppercase tracking-widest">© 2026 TSTOHLS 1.4.2 | OPEN SOURCE PROJECT</div>
         </footer>
     </div>
     <script>

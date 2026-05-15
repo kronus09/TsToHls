@@ -87,12 +87,17 @@ func main() {
 	http.HandleFunc("/api/channel/toggle", handler.ChannelToggleHandler)
 	http.HandleFunc("/api/channel/set-enabled", handler.ChannelSetEnabledHandler)
 
+	http.HandleFunc("/api/peer/handshake", handler.PeerHandshakeHandler)
+	http.HandleFunc("/api/peer/push/playlist", handler.PeerPushPlaylistHandler)
+	http.HandleFunc("/api/fluva/check", handler.FluvaCheckHandler)
+	http.HandleFunc("/api/fluva/push", handler.FluvaPushHandler)
+
 	http.HandleFunc("/playlist/tstohls.m3u", handler.PlaylistHandler)
 	http.HandleFunc("/stream/", handler.StreamHandler)
 	http.HandleFunc("/proxy/", handler.ProxyHandler)
 
 	fmt.Println("-------------------------------------------")
-	fmt.Printf("🚀 TsToHls v1.4.1 服务已启动\n")
+	fmt.Printf("🚀 TsToHls v1.4.2 服务已启动\n")
 	fmt.Printf("👉 管理界面: http://127.0.0.1:%s\n", Port)
 	fmt.Printf("👉 订阅地址: http://127.0.0.1:%s/playlist/tstohls.m3u\n", Port)
 	fmt.Println("-------------------------------------------")
