@@ -554,7 +554,11 @@ func FluvaCheckHandler(w http.ResponseWriter, r *http.Request) {
 		fluvaURL = PM.Config.PeerURL
 	}
 	if fluvaURL == "" {
-		fluvaURL = "http://127.0.0.1:20205"
+		host := r.Host
+		if idx := strings.LastIndex(host, ":"); idx != -1 {
+			host = host[:idx]
+		}
+		fluvaURL = "http://" + host + ":20205"
 	}
 
 	client := http.Client{Timeout: 3 * time.Second}
@@ -592,7 +596,11 @@ func FluvaPushHandler(w http.ResponseWriter, r *http.Request) {
 		fluvaURL = PM.Config.PeerURL
 	}
 	if fluvaURL == "" {
-		fluvaURL = "http://127.0.0.1:20205"
+		host := r.Host
+		if idx := strings.LastIndex(host, ":"); idx != -1 {
+			host = host[:idx]
+		}
+		fluvaURL = "http://" + host + ":20205"
 	}
 
 	playlistURL := fmt.Sprintf("http://%s/playlist/tstohls.m3u", r.Host)
