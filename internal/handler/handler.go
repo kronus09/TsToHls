@@ -514,7 +514,7 @@ func PeerHandshakeHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	json.NewEncoder(w).Encode(map[string]any{
 		"name":         "TsToHls",
-		"version":      "1.4.1",
+		"version":      "1.4.2",
 		"capabilities": []string{"hls_slicer", "live_playlist"},
 	})
 }
