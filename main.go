@@ -87,6 +87,11 @@ func main() {
 	http.HandleFunc("/api/channel/toggle", handler.ChannelToggleHandler)
 	http.HandleFunc("/api/channel/set-enabled", handler.ChannelSetEnabledHandler)
 
+	http.HandleFunc("/api/peer/handshake", handler.PeerHandshakeHandler)
+	http.HandleFunc("/api/peer/push/playlist", handler.PeerPushPlaylistHandler)
+	http.HandleFunc("/api/fluva/check", handler.FluvaCheckHandler)
+	http.HandleFunc("/api/fluva/push", handler.FluvaPushHandler)
+
 	http.HandleFunc("/playlist/tstohls.m3u", handler.PlaylistHandler)
 	http.HandleFunc("/stream/", handler.StreamHandler)
 	http.HandleFunc("/proxy/", handler.ProxyHandler)

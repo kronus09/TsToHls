@@ -18,6 +18,7 @@ type FFmpegConfig struct {
 	AudioCodec             string `json:"audio_codec"`
 	AudioBitrate           string `json:"audio_bitrate"`
 	CheckSourceReliability bool   `json:"check_source_reliability"`
+	PeerURL                string `json:"peer_url"`
 }
 
 type ProcessManager struct {

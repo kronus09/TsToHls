@@ -130,12 +130,16 @@
                     <div class="mt-auto pt-6">
                         <div class="p-5 rounded-xl bg-slate-50 border border-slate-100">
                             <div class="flex items-center gap-2 text-slate-600 font-bold text-xs">
-                                <i data-lucide="info" class="w-4 h-4 flex-shrink-0"></i>
-                                功能已迁移
+                                <i data-lucide="radio" class="w-4 h-4 flex-shrink-0"></i>
+                                直播源推送至 <a href="https://github.com/kronus09/Fluva-homepage" target="_blank" class="text-indigo-600 hover:underline">Fluva</a> 聚合
                             </div>
-                            <p class="text-[10px] text-slate-500 font-normal mt-2 leading-relaxed">
-                                原流播放功能已迁移到上方选项卡，点击 <strong>原流播放</strong> 选项卡即可使用。
+                            <p class="text-[10px] text-slate-500 font-normal mt-2 leading-relaxed" id="fluvaStatus">
+                                正在检测 Fluva 服务...
                             </p>
+                            <div class="mt-3 flex gap-2">
+                                <input type="text" id="fluvaUrl" class="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-mono hidden" placeholder="http://fluva:20205">
+                                <button id="fluvaPushBtn" class="bg-indigo-600 text-white font-bold text-xs px-4 py-1.5 rounded-lg shadow active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed" disabled>推送</button>
+                            </div>
                         </div>
                     </div>
                 </div>

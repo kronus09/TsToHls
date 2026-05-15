@@ -21,6 +21,7 @@ const init = () => {
         loadListFromServer();
         loadConfigFromServer();
         checkSourceFile();
+        checkFluva();
         checkStatus();
         setInterval(checkStatus, 30000);
     });
@@ -504,6 +505,78 @@ document.getElementById('copyBtn').onclick = () => {
     }).catch(err => {
         console.error('复制失败:', err);
     });
+};
+
+let fluvaOnline = false;
+let fluvaAddr = '';
+
+async function checkFluva(url) {
+    const statusEl = document.getElementById('fluvaStatus');
+    const pushBtn = document.getElementById('fluvaPushBtn');
+    const urlInput = document.getElementById('fluvaUrl');
+    const checkUrl = url || '';
+
+    try {
+        const res = await fetch('/api/fluva/check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: checkUrl })
+        });
+        const data = await res.json();
+
+        if (data.online) {
+            fluvaOnline = true;
+            fluvaAddr = data.url;
+            const peer = data.peer || {};
+            statusEl.innerHTML = `已连接 <strong class="text-indigo-600">${peer.name || 'Fluva'}</strong> v${peer.version || '?'} <span class="text-emerald-500">●</span>`;
+            pushBtn.disabled = false;
+            urlInput.classList.add('hidden');
+        } else {
+            fluvaOnline = false;
+            fluvaAddr = data.url;
+            statusEl.innerHTML = 'Fluva 服务未找到，请输入地址';
+            urlInput.classList.remove('hidden');
+            urlInput.value = data.url || '';
+            pushBtn.disabled = true;
+        }
+    } catch (e) {
+        statusEl.innerHTML = 'Fluva 检测失败';
+        pushBtn.disabled = true;
+    }
+}
+
+document.getElementById('fluvaUrl').addEventListener('change', function() {
+    checkFluva(this.value.trim());
+});
+
+document.getElementById('fluvaPushBtn').onclick = async function() {
+    const btn = this;
+    const statusEl = document.getElementById('fluvaStatus');
+    btn.disabled = true;
+    btn.textContent = '推送中...';
+
+    try {
+        const res = await fetch('/api/fluva/push', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: fluvaAddr })
+        });
+        const data = await res.json();
+
+        if (data.ok) {
+            statusEl.innerHTML = `推送成功 <span class="text-emerald-500">●</span> 地址: <strong class="text-indigo-600 text-[9px] font-mono">${data.playlist_url}</strong>`;
+            btn.textContent = '已推送';
+            setTimeout(() => { btn.textContent = '推送'; btn.disabled = false; }, 3000);
+        } else {
+            statusEl.innerHTML = `推送失败: ${data.error}`;
+            btn.textContent = '推送';
+            btn.disabled = false;
+        }
+    } catch (e) {
+        statusEl.innerHTML = '推送请求失败';
+        btn.textContent = '推送';
+        btn.disabled = false;
+    }
 };
 
 window.onload = init;
