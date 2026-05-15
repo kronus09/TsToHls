@@ -534,13 +534,13 @@ async function checkFluva(url) {
         } else {
             fluvaOnline = false;
             fluvaAddr = data.url;
-            statusEl.innerHTML = 'Fluva 服务未找到，请输入地址';
+            statusEl.innerHTML = '未找到，请输入地址';
             urlInput.classList.remove('hidden');
             urlInput.value = data.url || '';
             pushBtn.disabled = true;
         }
     } catch (e) {
-        statusEl.innerHTML = 'Fluva 检测失败';
+        statusEl.innerHTML = '检测失败';
         pushBtn.disabled = true;
     }
 }
@@ -564,7 +564,7 @@ document.getElementById('fluvaPushBtn').onclick = async function() {
         const data = await res.json();
 
         if (data.ok) {
-            statusEl.innerHTML = `推送成功 <span class="text-emerald-500">●</span> HLS: <strong class="text-indigo-600 text-[9px] font-mono">${data.hls_playlist_url}</strong><br>原流: <strong class="text-indigo-600 text-[9px] font-mono">${data.ts_playlist_url}</strong>`;
+            statusEl.innerHTML = `已推送 <span class="text-emerald-500">●</span> <span class="font-mono">${data.hls_playlist_url}</span>`;
             btn.textContent = '已推送';
             setTimeout(() => { btn.textContent = '推送'; btn.disabled = false; }, 3000);
         } else {
