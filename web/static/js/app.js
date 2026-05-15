@@ -564,7 +564,7 @@ document.getElementById('fluvaPushBtn').onclick = async function() {
         const data = await res.json();
 
         if (data.ok) {
-            statusEl.innerHTML = `推送成功 <span class="text-emerald-500">●</span> 地址: <strong class="text-indigo-600 text-[9px] font-mono">${data.playlist_url}</strong>`;
+            statusEl.innerHTML = `推送成功 <span class="text-emerald-500">●</span> HLS: <strong class="text-indigo-600 text-[9px] font-mono">${data.hls_playlist_url}</strong><br>原流: <strong class="text-indigo-600 text-[9px] font-mono">${data.ts_playlist_url}</strong>`;
             btn.textContent = '已推送';
             setTimeout(() => { btn.textContent = '推送'; btn.disabled = false; }, 3000);
         } else {

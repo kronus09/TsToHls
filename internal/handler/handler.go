@@ -603,10 +603,14 @@ func FluvaPushHandler(w http.ResponseWriter, r *http.Request) {
 		fluvaURL = "http://" + host + ":20205"
 	}
 
-	playlistURL := fmt.Sprintf("http://%s/playlist/tstohls.m3u", r.Host)
+	hlsPlaylistURL := fmt.Sprintf("http://%s/playlist/tstohls.m3u", r.Host)
+	tsPlaylistURL := fmt.Sprintf("http://%s/data/source.m3u", r.Host)
 
 	client := http.Client{Timeout: 5 * time.Second}
-	body, _ := json.Marshal(map[string]string{"playlist_url": playlistURL})
+	body, _ := json.Marshal(map[string]string{
+		"hls_playlist_url": hlsPlaylistURL,
+		"ts_playlist_url":  tsPlaylistURL,
+	})
 	resp, err := client.Post(fluvaURL+"/api/peer/push/playlist", "application/json", strings.NewReader(string(body)))
 	if err != nil {
 		json.NewEncoder(w).Encode(map[string]any{
@@ -618,7 +622,8 @@ func FluvaPushHandler(w http.ResponseWriter, r *http.Request) {
 	defer resp.Body.Close()
 
 	json.NewEncoder(w).Encode(map[string]any{
-		"ok":           true,
-		"playlist_url": playlistURL,
+		"ok":               true,
+		"hls_playlist_url": hlsPlaylistURL,
+		"ts_playlist_url":  tsPlaylistURL,
 	})
 }
